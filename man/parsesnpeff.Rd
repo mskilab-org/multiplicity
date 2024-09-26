@@ -6,6 +6,7 @@
 \usage{
 parsesnpeff(
   vcf,
+  snpeff_path,
   tumor_id = NULL,
   normal_id = NULL,
   filterpass = TRUE,

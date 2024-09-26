@@ -6,29 +6,33 @@
 #' @param jabba_rds Path to jabba file
 #' @param tumor_name Expected name of tumor as annotated in the VCF
 #' @param normal_name Expected name of normal as annotated in the VCF
+#' @param snpeff_path Path to unzipped SnpEff toolkit
 #' @return Returns a GRanges with counts and converted copies
 #' @export 
 snvplicity = function(somatic_snv,
                       germline_snv,
                       jabba_rds,
+                      snpeff_path,
                       tumor_name = NULL,
                       normal_name = NULL){
 
-  gg = gG(jabba = opt$jabba)
+  gg = gG(jabba = jabba_rds)
 
-  somatic.snv = parsesnpeff(opt$somatic_snv,
+  somatic.snv = parsesnpeff(vcf = somatic_snv,
+                            snpeff_path = snpeff_path,
                             coding_alt_only = FALSE,
                             filterpass = FALSE,
-                            tumor_id = opt$tumor_name,
-                            normal_id = opt$normal_name,
+                            tumor_id = tumor_name,
+                            normal_id = normal_name,
                             keepfile = FALSE,
                             altpipe = TRUE)
 
-  germline.snv = parsesnpeff(opt$germline_snv,
+  germline.snv = parsesnpeff(vcf = germline_snv,
+                             snpeff_path = snpeff_path,
                              coding_alt_only = FALSE,
                              filterpass = FALSE,
-                             tumor_id = opt$tumor_name,
-                             normal_id = opt$normal_name,
+                             tumor_id = tumor_name,
+                             normal_id = normal_name,
                              keepfile = FALSE,
                              altpipe = TRUE)
 
@@ -41,19 +45,19 @@ snvplicity = function(somatic_snv,
   somatic.snv.filtered <- somatic.snv.filtered[, variant.g := paste0(REF, ">", ALT)] %>% dt2gr
 
   #normalization
-    unique.somatic.snv = somatic.snv.filtered[,c('ref', 'alt')] %>%
-      gr.nochr %Q%
-      (seqnames %in% c(1:22, "X")) %>%
-      unique
-    unique.somatic.snv$major.count <- pmax(unique.somatic.snv$ref, unique.somatic.snv$alt)
-    unique.somatic.snv$minor.count <- pmin(unique.somatic.snv$ref, unique.somatic.snv$alt)
-    somatic.m = length(unique.somatic.snv)
-    somatic.sf = sum(unique.somatic.snv$major.count + unique.somatic.snv$minor.count) / somatic.m
-    unique.somatic.snv$major.count <- unique.somatic.snv$major.count / somatic.sf
-    unique.somatic.snv$minor.count <- unique.somatic.snv$minor.count / somatic.sf
+  unique.somatic.snv = somatic.snv.filtered[,c('ref', 'alt')] %>%
+    gr.nochr %Q%
+    (seqnames %in% c(1:22, "X")) %>%
+    unique
+  unique.somatic.snv$major.count <- pmax(unique.somatic.snv$ref, unique.somatic.snv$alt)
+  unique.somatic.snv$minor.count <- pmin(unique.somatic.snv$ref, unique.somatic.snv$alt)
+  somatic.m = length(unique.somatic.snv)
+  somatic.sf = sum(unique.somatic.snv$major.count + unique.somatic.snv$minor.count) / somatic.m
+  unique.somatic.snv$major.count <- unique.somatic.snv$major.count / somatic.sf
+  unique.somatic.snv$minor.count <- unique.somatic.snv$minor.count / somatic.sf
 
-    message("GERMLINE SNV PROCESSING")
-    message("ONLY FILTER == PASS VARIANTS FOR GERMLINE SNVS")
+  message("GERMLINE SNV PROCESSING")
+  message("ONLY FILTER == PASS VARIANTS FOR GERMLINE SNVS")
 
   names(germline.snv) <- NULL
   germline.snv.filtered = gr2dt(germline.snv %Q% (FILTER == "PASS"))[, .SD[1], by = c("seqnames", "start", "end")]
@@ -176,6 +180,7 @@ snvplicity = function(somatic_snv,
 #' @return GRangesList of breakpoint pairs with junctions that overlap removed
 #' @export
 parsesnpeff = function (vcf,
+                        snpeff_path,
                         tumor_id = NULL,
                         normal_id = NULL,
                         filterpass = TRUE,
@@ -194,9 +199,11 @@ parsesnpeff = function (vcf,
         on.exit(unlink(tmp.path))
     try2({
         catcmd = if (grepl("(.gz)$", vcf)) "zcat" else "cat"
-        onepline = "/gpfs/home/rafaij01/lab/git/mskilab/flows/modules/SnpEff/source/snpEff/scripts/vcfEffOnePerLine.pl"
+        onepline = paste0(snpeff_path, "/scripts/vcfEffOnePerLine.pl")
         if (coding_alt_only) {
-          filt = "java -Xmx20m -Xms20m -XX:ParallelGCThreads=1 -jar /gpfs/home/rafaij01/lab/git/mskilab/flows/modules/SnpSift filter \"( ANN =~ 'chromosome_number_variation|exon_loss_variant|rare_amino_acid|stop_lost|transcript_ablation|coding_sequence|regulatory_region_ablation|TFBS|exon_loss|truncation|start_lost|missense|splice|stop_gained|frame' )\""
+          filt = paste0("java -Xmx20m -Xms20m -XX:ParallelGCThreads=1 -jar ",
+                        snpeff_path, "/SnpSift.jar ",
+                        "filter \"( ANN =~ 'chromosome_number_variation|exon_loss_variant|rare_amino_acid|stop_lost|transcript_ablation|coding_sequence|regulatory_region_ablation|TFBS|exon_loss|truncation|start_lost|missense|splice|stop_gained|frame' )\"")
             if (filterpass)
                 cmd = sprintf(paste(catcmd, "%s | %s | %s | bcftools view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), 
                               vcf, onepline, filt, tmp.path)
@@ -233,7 +240,7 @@ parsesnpeff = function (vcf,
         if ("AD" %in% names(geno(vcf))) {
           vcf.ncol <- ncol(geno(vcf)$AD)
           vcf.names <- colnames(geno(vcf)$AD)
-          ## grab the last item in the array
+          ## grab the last item in the array if ids not specified... presumably tumor
           if(vcf.ncol > 1){
             vcf.order <- if(!is.na(tumor_id) && !is.na(normal_id) &&
                             !is.null(tumor_id) && !is.null(normal_id)){
@@ -241,7 +248,7 @@ parsesnpeff = function (vcf,
                          } else {vcf.ncol} # just grab the last column!
             adep = setnames(as.data.table(geno(vcf)$AD[, vcf.order[1], 1:2]), 
                             c("ref", "alt"))
-            tryCatch(expr = {
+            try2(expr = {
               adep.n = setnames(as.data.table(geno(vcf)$AD[, vcf.order[2], 1:2]), 
                                 c("normal.ref", "normal.alt"))
               adep = adep %>% cbind(adep.n)

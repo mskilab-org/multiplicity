@@ -8,6 +8,7 @@ snvplicity(
   somatic_snv,
   germline_snv,
   jabba_rds,
+  snpeff_path,
   tumor_name = NULL,
   normal_name = NULL
 )
@@ -18,6 +19,8 @@ snvplicity(
 \item{germline_snv}{Path to germline SNV file}
 
 \item{jabba_rds}{Path to jabba file}
+
+\item{snpeff_path}{Path to unzipped SnpEff toolkit}
 
 \item{tumor_name}{Expected name of tumor as annotated in the VCF}
 
