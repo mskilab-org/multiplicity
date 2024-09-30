@@ -15,7 +15,8 @@ parsesnpeff(
   gr = NULL,
   keepfile = FALSE,
   altpipe = FALSE,
-  debug = FALSE
+  debug = FALSE,
+  verbose = FALSE
 )
 }
 \arguments{
