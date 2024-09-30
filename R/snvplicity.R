@@ -290,13 +290,14 @@ parsesnpeff = function (vcf,
     }
     else if (all(c("AU", "GU", "CU", "TU", "TAR", "TIR") %in%
                  c(names(geno(vcf))))) {
+      if(verbose)(message("parsing AU/GU/CU/TAR/TIR fields in VCF."))
       this.col = dim(geno(vcf)[["AU"]])[2]
       d.a = geno(vcf)[["AU"]][, , 1, drop = F][, this.col, 1]
       d.g = geno(vcf)[["GU"]][, , 1, drop = F][, this.col, 1]
       d.t = geno(vcf)[["TU"]][, , 1, drop = F][, this.col, 1]
       d.c = geno(vcf)[["CU"]][, , 1, drop = F][, this.col, 1]
       mat = cbind(A = d.a, G = d.g, T = d.t, C = d.c)
-      rm("d.a", "d.g", "d.t", "d.c")
+      #rm("d.a", "d.g", "d.t", "d.c")
       refid = match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(mat))
       refid = ifelse(!isSNV(vcf), NA_integer_, refid)
       altid = match(as.character(VariantAnnotation::fixed(vcf)$ALT), colnames(mat))
@@ -306,8 +307,29 @@ parsesnpeff = function (vcf,
       this.icol = dim(geno(vcf)[["TAR"]])[2]
       refindel = d.tar = geno(vcf)[["TAR"]][, , 1, drop = F][, this.icol, 1]
       altindel = d.tir = geno(vcf)[["TIR"]][, , 1, drop = F][, this.icol, 1]
+      try2({
+        n.d.a = geno(vcf)[["AU"]][, , 1, drop = F][, this.col - 1, 1]
+        n.d.g = geno(vcf)[["GU"]][, , 1, drop = F][, this.col - 1, 1]
+        n.d.t = geno(vcf)[["TU"]][, , 1, drop = F][, this.col - 1, 1]
+        n.d.c = geno(vcf)[["CU"]][, , 1, drop = F][, this.col - 1, 1]
+        n.mat = cbind(A = n.d.a, G = n.d.g, T = n.d.t, C = n.d.c)
+        #rm("n.d.a", "n.d.g", "n.d.t", "n.d.c")
+        n.refid = match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(n.mat))
+        n.refid = ifelse(!isSNV(vcf), NA_integer_, refid)
+        n.altid = match(as.character(VariantAnnotation::fixed(vcf)$ALT), colnames(n.mat))
+        n.altid = ifelse(!isSNV(vcf), NA_integer_, altid)
+        n.refsnv = n.mat[cbind(seq_len(nrow(n.mat)), refid)]
+        n.altsnv = n.mat[cbind(seq_len(nrow(n.mat)), altid)]
+        n.refindel = n.d.tar = geno(vcf)[["TAR"]][, , 1, drop = F][, this.icol - 1, 1]
+        n.altindel = n.d.tir = geno(vcf)[["TIR"]][, , 1, drop = F][, this.icol - 1, 1]
+      })
       adep = data.table(ref = coalesce(refsnv, refindel),
                         alt = coalesce(altsnv, altindel))
+      try2({
+        adep.n = data.table(normal.ref = coalesce(n.refsnv, n.refindel),
+                            normal.alt = coalesce(n.altsnv, n.altindel))
+        adep =  adep %>% cbind(adep.n)
+      })
       gt = NULL
     } else {
       message("ref and alt count columns not recognized")
