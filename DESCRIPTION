@@ -7,8 +7,24 @@ Description: This package is responsible for the total transformation of counts 
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports:
-	gUtils,
   gGnome,
-  skitools
+  gUtils,
+  bamUtils,
+  tidyverse,
+  rtracklayer,
+  khtools,
+  skidb,
+  skitools,
+  data.table
+Depends:
+  gGnome,
+  gUtils,
+  bamUtils,
+  tidyverse,
+  rtracklayer,
+  khtools,
+  skidb,
+  skitools,
+  data.table
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.1

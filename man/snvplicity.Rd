@@ -10,7 +10,8 @@ snvplicity(
   jabba_rds,
   snpeff_path,
   tumor_name = NULL,
-  normal_name = NULL
+  normal_name = NULL,
+  verbose = FALSE
 )
 }
 \arguments{
