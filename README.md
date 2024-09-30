@@ -1,15 +1,12 @@
 ---
-   _____ _   ___      __    _ _      _ _         
-  / ____| \ | \ \    / /   | (_)    (_) |      
- | (___ |  \| |\ \  / / __ | |_  ___ _| |_ _   _ 
-  \___ \| . ` | \ \/ / '_ \| | |/ __| | __| | | |
-  ____) | |\  |  \  /| |_) | | | (__| | |_| |_| |
- |_____/|_| \_|   \/ | .__/|_|_|\___|_|\__|\__, |
-                     | |                    __/ |
-                     |_|                   |___/ 
----
 
-# SNVplicity
+  ___ _  ___   __    _ _    _ _        
+ / __| \| \ \ / / __| (_)__(_) |_ _  _ 
+ \__ \ .` |\ V / '_ \ | / _| |  _| || |
+ |___/_|\_| \_/| .__/_|_\__|_|\__|\_, |
+               |_|                |__/ 
+
+---
 
 A simplistic transformation of counts to multiplicity as outlined in our
 published works: JaBbA v1 [Choo et
@@ -41,40 +38,40 @@ be defined to be the tumor whereas the first will be defined as the normal.
       <th style="border: 1px solid black; padding: 5px;">Description/notes</th>
     </tr>
     <tr>
-      <td style="border: 1px solid black; padding: 5px;"><code>`somatic_snv`</code></td>
-      <td style="border: 1px solid black; padding: 5px;">`NULL`</td>
+      <td style="border: 1px solid black; padding: 5px;"><code>somatic_snv</code></td>
+      <td style="border: 1px solid black; padding: 5px;"><code>NULL</code></td>
       <td style="border: 1px solid black; padding: 5px;">Path to somatic vcf. </td>
     </tr>
     <tr>
-      <td style="border: 1px solid black; padding: 5px;"><code>`germline_snv`</code></td>
-      <td style="border: 1px solid black; padding: 5px;">`NULL`</td>
+      <td style="border: 1px solid black; padding: 5px;"><code>germline_snv</code></td>
+      <td style="border: 1px solid black; padding: 5px;"><code>NULL</code></td>
       <td style="border: 1px solid black; padding: 5px;">Path to germline vcf.</td>
     </tr>
     <tr>
-      <td style="border: 1px solid black; padding: 5px;"><code>`jabba_rds`</code></td>
+      <td style="border: 1px solid black; padding: 5px;"><code>jabba_rds</code></td>
       <td style="border: 1px solid black; padding: 5px;"></td>
       <td style="border: 1px solid black; padding: 5px;">JaBbA-derived
   gGraph or jabba.simple.rds</td>
     </tr>
     <tr>
-      <td style="border: 1px solid black; padding: 5px;"><code>`snpeff_path`</code></td>
-      <td style="border: 1px solid black; padding: 5px;">`/path/to/snpeff`</td>
+      <td style="border: 1px solid black; padding: 5px;"><code>snpeff_path</code></td>
+      <td style="border: 1px solid black; padding: 5px;"><code>/path/to/snpeff</code></td>
       <td style="border: 1px solid black; padding: 5px;">Path to unzipped/untarred
   SnpEff directory, containing discrete scripts; importantly, SnpSift & vcfEffOnePerLine.pl</td>
     </tr>
     <tr>
-      <td style="border: 1px solid black; padding: 5px;"><code>`tumor_name`</code></td>
+      <td style="border: 1px solid black; padding: 5px;"><code>tumor_name</code></td>
       <td style="border: 1px solid black; padding: 5px;"><code>NULL</code></td>
       <td style="border: 1px solid black; padding: 5px;"></td>
     </tr>
     <tr>
-      <td style="border: 1px solid black; padding: 5px;"><code>`normal_name`</code></td>
+      <td style="border: 1px solid black; padding: 5px;"><code>normal_name</code></td>
       <td style="border: 1px solid black; padding: 5px;"><code>NULL</code></td>
       <td style="border: 1px solid black; padding: 5px;"></td>
     </tr>
     <tr>
-      <td style="border: 1px solid black; padding: 5px;"><code>`verbose`</code></td>
-      <td style="border: 1px solid black; padding: 5px;"><code>`TRUE`</code></td>
+      <td style="border: 1px solid black; padding: 5px;"><code>verbose</code></td>
+      <td style="border: 1px solid black; padding: 5px;"><code>TRUE</code></td>
       <td style="border: 1px solid black; padding: 5px;">Informative logging of function?</td>
     </tr>
   </tbody>
