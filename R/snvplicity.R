@@ -5,6 +5,8 @@
 #' @param germline_snv Path to germline SNV file
 #' @param jabba_rds Path to jabba file
 #' @param tumor_name Expected name of tumor as annotated in the VCF
+#' @param purity Purity of inputted jabba_rds (optional if metadata of gGraph contains purity)
+#' @param ploidy Ploidy of inputted jabba_rds (optional if metadata of gGraph contains ploidy)
 #' @param normal_name Expected name of normal as annotated in the VCF
 #' @param snpeff_path Path to unzipped SnpEff toolkit
 #' @return Returns a GRanges with counts and converted copies
@@ -15,16 +17,23 @@ snvplicity = function(somatic_snv,
                       snpeff_path,
                       tumor_name = NULL,
                       normal_name = NULL,
+                      purity = NULL, 
+                      ploidy = NULL,
                       verbose = FALSE){
 
   if(verbose){message("reading in jabba file")}
   
   gg = gG(jabba = jabba_rds)
+
+  #browser()
   
   #constitutional_cn assignment
   #c_subj == 1 for major allele
   #c_subj == 1 for autosomes and X chromosome in females, 0 for X and Y in males
-  ncn.x = gg$nodes$dt[(seqnames == "X" | seqnames == "chrX"),
+  ncn.x = gg$nodes$dt[(seqnames == "X" |
+                       seqnames == "chrX" |
+                       seqnames == "23" |
+                       seqnames == "chr23"), #' MSK-FACETS calls chrX as chr23
                       weighted.mean(cn,
                                     w = end - start + 1,
                                     na.rm = TRUE)]
@@ -32,9 +41,10 @@ snvplicity = function(somatic_snv,
   if(ncn.x < 1.4) message("sex determination: XY")
   else message("sex determination:: XX")
 
-  jab = gg$nodes$gr
+  jab = gg$nodes$gr %>% gr.nochr()
+  jab = dt2gr(gr2dt(jab)[seqnames == 23, seqnames := "X"])
   ss.p = jab[as.logical(strand(jab) == "+")]
-
+  
   somatic.variants = NULL
   germline.variants = NULL
 
@@ -55,16 +65,16 @@ snvplicity = function(somatic_snv,
     names(somatic.snv) <- NULL
     somatic.snv.filtered = gr2dt(somatic.snv)[, .SD[1], by = c("seqnames", "start", "end")]
     somatic.snv.filtered <- somatic.snv.filtered[, variant.g := paste0(REF, ">", ALT)] %>% dt2gr
-
+    
     #'normalization
      unique.somatic.snv = somatic.snv.filtered[,c('ref', 'alt')] %>%
       gr.nochr %Q%
       (!seqnames == c("Y")) %>%
       unique
-    unique.somatic.snv$major.count <- pmax(unique.somatic.snv$ref, unique.somatic.snv$alt)
-    unique.somatic.snv$minor.count <- pmin(unique.somatic.snv$ref, unique.somatic.snv$alt)
-    somatic.m = length(unique.somatic.snv)
-    somatic.sf = sum(unique.somatic.snv$major.count + unique.somatic.snv$minor.count) / somatic.m
+    unique.somatic.snv$major.count <- pmax(unique.somatic.snv$ref, unique.somatic.snv$alt, na.rm = T)
+    unique.somatic.snv$minor.count <- pmin(unique.somatic.snv$ref, unique.somatic.snv$alt, na.rm = T)
+    somatic.m = ((unique.somatic.snv$ref + unique.somatic.snv$alt) %>% length) * 2
+    somatic.sf = sum(unique.somatic.snv$major.count + unique.somatic.snv$minor.count, na.rm = T) / somatic.m
     unique.somatic.snv$major.count <- unique.somatic.snv$major.count / somatic.sf
     unique.somatic.snv$minor.count <- unique.somatic.snv$minor.count / somatic.sf
 
@@ -79,10 +89,19 @@ snvplicity = function(somatic_snv,
     unique.somatic.snv = gr.val(unique.somatic.snv, ss.p, "cn", na.rm = T)
 
     ###### SOMATIC APPLICATION OF FORMULA #####
+
+    browser()
     
     tau_hat = mean(unique.somatic.snv$cn)
-    alpha = gg$meta$purity
-    beta = alpha / (alpha * tau_hat + 2*(1 - alpha))
+    tau = gg$meta$ploidy
+    alpha = if(!is.null(gg$meta$purity)) {
+              gg$meta$purity
+            } else if (!is.null(purity)){
+              purity
+            } else {
+              unique(jab$purity)
+            }
+    beta = alpha / (alpha * tau + 2*(1 - alpha))
     gamma = 2*(1 - alpha) / (alpha * tau_hat + 2*(1 - alpha))
 
     if(verbose) message(paste0("average total CN of somatic loci: " , tau_hat))
@@ -93,7 +112,7 @@ snvplicity = function(somatic_snv,
                               (2 * unique.somatic.snv$major.count - gamma) / (2 * beta)
 
     mcols(unique.somatic.snv)$minor_snv_copies =
-                              (2 * unique.somatic.snv$major.count - gamma * unique.somatic.snv$minor_constitutional_cn)/ 2 * beta
+                              (2 * unique.somatic.snv$minor.count - (gamma * unique.somatic.snv$minor_constitutional_cn))/ (2 * beta)
 
     somatic.variants = gr.val(somatic.snv.filtered %>% gr.nochr,
                               unique.somatic.snv[,c('major.count',
@@ -261,6 +280,7 @@ parsesnpeff = function (vcf,
            "rank", "variant.c", "variant.p", "cdna_pos", "cds_pos", 
            "protein_pos", "distance")
     data.table::setnames(ann, fn)
+    #browser()
     if ("AD" %in% names(geno(vcf))) {
       if (verbose)(message(paste0("parsing AD field in VCF.")))
       vcf.ncol <- ncol(geno(vcf)$AD)
