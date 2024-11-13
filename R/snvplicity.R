@@ -31,10 +31,8 @@ snvplicity = function(somatic_snv = NULL,
   gg = gG(jabba = jabba_rds)
   hets = gr.val(fread(het_pileups_wgs) %>% dt2gr,
                 gg$nodes$gr, 'cn') %>%
-    gr.nochr %Q%
-    (seqnames %in% c(1:22, "X"))
-  
-  #browser()
+    gr.nochr() %>% gr2dt()
+  hets[seqnames %in% c(1:22, "X")] %>% dt2gr -> hets
   
   #constitutional_cn assignment
   #c_subj == 1 for major allele
@@ -136,8 +134,6 @@ snvplicity = function(somatic_snv = NULL,
   }
 
   if(!is.na(germline_snv) && !is.null(germline_snv)){
-
-    browser()
 
     germline.snv = parsesnpeff(vcf = germline_snv,
                               snpeff_path = snpeff_path,
