@@ -3,16 +3,18 @@
 #'
 #' @param somatic_snv Path to somatic SNV file
 #' @param germline_snv Path to germline SNV file
+#' @param het_pileups_wgs Path to het_pileups_wgs file
 #' @param jabba_rds Path to jabba file
-#' @param tumor_name Expected name of tumor as annotated in the VCF
+#' @param tumor_name Expected name of tumor as annotated in the VCF; highly suggested this is provided for accurate VCF parsing
+#' @param normal_name Expected name of normal as annotated in the VCF; highly suggested this is provided for accurate VCF parsing
 #' @param purity Purity of inputted jabba_rds (optional if metadata of gGraph contains purity)
 #' @param ploidy Ploidy of inputted jabba_rds (optional if metadata of gGraph contains ploidy)
-#' @param normal_name Expected name of normal as annotated in the VCF
 #' @param snpeff_path Path to unzipped SnpEff toolkit
 #' @return Returns a GRanges with counts and converted copies
 #' @export 
-snvplicity = function(somatic_snv,
+snvplicity = function(somatic_snv = NULL,
                       germline_snv = NULL,
+                      het_pileups_wgs,
                       jabba_rds,
                       snpeff_path,
                       tumor_name = NULL,
@@ -22,9 +24,16 @@ snvplicity = function(somatic_snv,
                       verbose = FALSE){
 
   if(verbose){message("reading in jabba file")}
+
+  if(is.null(somatic_snv) & is.null(germline_snv))
+    stop("Somatic VCF and/or Germline VCF must be provided.")
   
   gg = gG(jabba = jabba_rds)
-
+  hets = gr.val(fread(het_pileups_wgs) %>% dt2gr,
+                gg$nodes$gr, 'cn') %>%
+    gr.nochr %Q%
+    (seqnames %in% c(1:22, "X"))
+  
   #browser()
   
   #constitutional_cn assignment
@@ -89,10 +98,8 @@ snvplicity = function(somatic_snv,
     unique.somatic.snv = gr.val(unique.somatic.snv, ss.p, "cn", na.rm = T)
 
     ###### SOMATIC APPLICATION OF FORMULA #####
-
-    #browser()
     
-    tau_hat = mean(unique.somatic.snv$cn)
+    tau_hat = mean(hets$cn)
     tau = gg$meta$ploidy
     alpha = if(!is.null(gg$meta$purity)) {
               gg$meta$purity
@@ -131,6 +138,8 @@ snvplicity = function(somatic_snv,
 
   if(!is.na(germline_snv) && !is.null(germline_snv)){
 
+    browser()
+
     germline.snv = parsesnpeff(vcf = germline_snv,
                               snpeff_path = snpeff_path,
                               coding_alt_only = FALSE,
@@ -168,7 +177,7 @@ snvplicity = function(somatic_snv,
     unique.germline.snv = gr.val(unique.germline.snv, ss.p, "cn", na.rm = T)
     
 		###### GERMLINE APPLICATION OF FORMULA #####
-    tau_hat = mean(unique.germline.snv$cn)
+    tau_hat = mean(hets$cn)
     alpha = gg$meta$purity
     beta = alpha / (alpha * tau_hat + 2*(1 - alpha))
     gamma = 2*(1 - alpha) / (alpha * tau_hat + 2*(1 - alpha))
