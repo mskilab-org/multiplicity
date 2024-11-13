@@ -90,7 +90,7 @@ snvplicity = function(somatic_snv,
 
     ###### SOMATIC APPLICATION OF FORMULA #####
 
-    browser()
+    #browser()
     
     tau_hat = mean(unique.somatic.snv$cn)
     tau = gg$meta$ploidy
@@ -124,6 +124,7 @@ snvplicity = function(somatic_snv,
 
     somatic.variants[alt >= ref, total_copies := major_snv_copies]
     somatic.variants[alt < ref, total_copies := minor_snv_copies]
+    somatic.variants[total_copies <= 0, total_copies := 0]
     somatic.variants[, VAF := alt / (alt + ref)]
     somatic.variants = somatic.variants %>% dt2gr
   }
