@@ -93,11 +93,11 @@ snvplicity = function(somatic_snv = NULL,
     }
 
     values(unique.somatic.snv)[, "minor_constitutional_cn"] = somatic.ncn.vec - 1
-    unique.somatic.snv = gr.val(unique.somatic.snv, ss.p, "cn", na.rm = T)
+    unique.somatic.snv = gr.val(unique.somatic.snv, ss.p, "cn", na.rm = T)  
 
     ###### SOMATIC APPLICATION OF FORMULA #####
     
-    tau_hat = mean(hets$cn)
+    tau_hat = mean(hets$cn, na.rm = TRUE)
     tau = gg$meta$ploidy
     alpha = if(!is.null(gg$meta$purity)) {
               gg$meta$purity
@@ -253,10 +253,12 @@ parsesnpeff = function (
         snpeff_path, "/SnpSift.jar ",
         "filter \"( ANN =~ 'chromosome_number_variation|exon_loss_variant|rare_amino_acid|stop_lost|transcript_ablation|coding_sequence|regulatory_region_ablation|TFBS|exon_loss|truncation|start_lost|missense|splice|stop_gained|frame' )\"")
       if (filterpass) {
-        if(verbose)(message("Coding alterations only and FILTER == PASS variants only."))
-        cmd = sprintf(paste(catcmd, "%s | %s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, filt, bcftools, tmp.path)  } else {if(verbose)(message("Coding alterations only."))
+        if(verbose) (message("Coding alterations only and FILTER == PASS variants only."))
+        cmd = sprintf(paste(catcmd, "%s | %s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, filt, bcftools, tmp.path)  
+      } else {
+        if(verbose) (message("Coding alterations only."))
           cmd = sprintf("cat %s | %s | %s | bgzip -c > %s", vcf, onepline, filt, tmp.path)
-        }
+      }
     } else {
       filt = ""
       if (filterpass){
