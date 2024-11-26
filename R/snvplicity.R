@@ -223,9 +223,10 @@ snvplicity = function(somatic_snv = NULL,
 #' @param debug lorem impsum
 #' @return GRangesList of breakpoint pairs with junctions that overlap removed
 #' @export
+
 parsesnpeff = function (
   vcf,
-  snpeff_path,
+  snpeff_path = "~/modules/SnpEff/source/snpEff",
   tumor_id = NULL,
   normal_id = NULL,
   filterpass = TRUE,
@@ -277,10 +278,10 @@ parsesnpeff = function (
     out = grok_vcf(tmp.path, long = TRUE, geno = geno, gr = gr)
   else {
     if (verbose)(message(paste0("reading in SnpSift VCF.")))
-    vcf = readVcf(tmp.path)
-    rr = rowRanges(vcf)
+    vcf = VariantAnnotation::readVcf(tmp.path)
+    rr = MatrixGenerics::rowRanges(vcf)
     rr$REF = as.character(rr$REF)
-    ann = as.data.table(tstrsplit(unlist(info(vcf)$ANN),
+    ann = as.data.table(data.table::tstrsplit(unlist(VariantAnnotation::info(vcf)$ANN),
       "\\|"))[, 1:15, with = FALSE, drop = FALSE]
     fn = c("allele", "annotation", "impact", "gene", "gene_id",
       "feature_type", "feature_id", "transcript_type", 
@@ -333,10 +334,11 @@ parsesnpeff = function (
       d.t = geno(vcf)[["TU"]][, , 1, drop = F][, this.col, 1]
       d.c = geno(vcf)[["CU"]][, , 1, drop = F][, this.col, 1]
       mat = cbind(A = d.a, G = d.g, T = d.t, C = d.c)
-      #rm("d.a", "d.g", "d.t", "d.c")
       refid = match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(mat))
       refid = ifelse(!isSNV(vcf), NA_integer_, refid)
-      altid = match(as.character(VariantAnnotation::fixed(vcf)$ALT), colnames(mat))
+      ## Note this assumes that multiallelic splitting via bcftools norm -m -any is run upstream (this breaks some fields if run after vcfOneLine.pl)
+        ## otherwise you can't just unlist the ALT field if multiallelics are present
+      altid = match(as.character(unlist(VariantAnnotation::fixed(vcf)$ALT)), colnames(mat))
       altid = ifelse(!isSNV(vcf), NA_integer_, altid)
       refsnv = mat[cbind(seq_len(nrow(mat)), refid)]
       altsnv = mat[cbind(seq_len(nrow(mat)), altid)]
@@ -349,10 +351,11 @@ parsesnpeff = function (
         n.d.t = geno(vcf)[["TU"]][, , 1, drop = F][, this.col - 1, 1]
         n.d.c = geno(vcf)[["CU"]][, , 1, drop = F][, this.col - 1, 1]
         n.mat = cbind(A = n.d.a, G = n.d.g, T = n.d.t, C = n.d.c)
-        #rm("n.d.a", "n.d.g", "n.d.t", "n.d.c")
         n.refid = match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(n.mat))
         n.refid = ifelse(!isSNV(vcf), NA_integer_, refid)
-        n.altid = match(as.character(VariantAnnotation::fixed(vcf)$ALT), colnames(n.mat))
+        ## Note this assumes that multiallelic splitting via bcftools norm -m -any is run upstream (this breaks some fields if run after vcfOneLine.pl)
+        ## otherwise you can't just unlist the ALT field if multiallelics are present
+        n.altid = match(as.character(unlist(VariantAnnotation::fixed(vcf)$ALT)), colnames(n.mat))
         n.altid = ifelse(!isSNV(vcf), NA_integer_, altid)
         n.refsnv = n.mat[cbind(seq_len(nrow(n.mat)), refid)]
         n.altsnv = n.mat[cbind(seq_len(nrow(n.mat)), altid)]
@@ -366,10 +369,9 @@ parsesnpeff = function (
           normal.alt = coalesce(n.altsnv, n.altindel))
         adep =  adep %>% cbind(adep.n)
       })
-      gt = NULL
+      gt = data.frame(GT = rep_len("", NROW(vcf)))
     } else {
       message("ref and alt count columns not recognized")
-
       adep = NULL
       gt = NULL
     }
@@ -385,7 +387,7 @@ parsesnpeff = function (
   }
   this.env = environment()
   return(this.env$out)
-}
+} 
 
 #' @name rand.string
 #' @title make a random string
