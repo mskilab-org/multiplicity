@@ -29,10 +29,12 @@ snvplicity = function(somatic_snv = NULL,
     stop("Somatic VCF and/or Germline VCF must be provided.")
   
   gg = gG(jabba = jabba_rds)
-  hets = gr.val(fread(het_pileups_wgs) %>% dt2gr,
-                gg$nodes$gr, 'cn') %>%
-    gr.nochr() %>% gr2dt()
-  hets[seqnames %in% c(1:22, "X")] %>% dt2gr -> hets
+  jab = gg$nodes$gr
+  GenomeInfoDb::seqlevelsStyle(jab)
+  hets = fread(het_pileups_wgs) %>% dt2gr
+  GenomeInfoDb::seqlevelsStyle(hets) = "NCBI"
+  hets = gr.val(hets, jab, 'cn')
+  hets = hets[as.character(seqnames(hets)) %in% c(1:22, "X")]
   
   #constitutional_cn assignment
   #c_subj == 1 for major allele
@@ -48,7 +50,6 @@ snvplicity = function(somatic_snv = NULL,
   if(ncn.x < 1.4) message("sex determination: XY")
   else message("sex determination:: XX")
 
-  jab = gg$nodes$gr %>% gr.nochr()
   jab = dt2gr(gr2dt(jab)[seqnames == 23, seqnames := "X"])
   ss.p = jab[as.logical(strand(jab) == "+")]
   
