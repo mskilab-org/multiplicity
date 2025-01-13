@@ -322,8 +322,9 @@ parsesnpeff = function (
         gt = geno(vcf)$GT
       } else {
         if (verbose)(message(paste0("parsing only tumor alt/ref counts.")))
-        adep = setnames(as.data.table(geno(vcf)$AD[, vcf.ncol, 1:2]),
-          c("ref", "alt"))
+        adep = geno(vcf)$AD[, vcf.ncol]
+        adep = data.table::transpose(adep)
+        adep = setnames(as.data.table(adep), c("ref", "alt"))
         gt = geno(vcf)$GT
       }
     } else if (all(c("AU", "GU", "CU", "TU", "TAR", "TIR") %in%
