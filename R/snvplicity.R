@@ -14,34 +14,65 @@
 #' @export 
 snvplicity = function(somatic_snv = NULL,
                       germline_snv = NULL,
-                      tumor_dryclean,
+                      het_pileups_wgs = NULL,
+                      tumor_cbs = NULL,
+                      tumor_dryclean = NULL,
                       dryclean_field, 
                       jabba_rds,
+                      mask = NULL,
                       inferred_sex = NA,
                       read_size = 151,
                       snpeff_path,
                       tumor_name = NULL,
                       normal_name = NULL,
+                      normfactor = 2,
+                      filterpass = FALSE,
+                      tau_in_gamma = FALSE,
                       purity = NULL, 
                       ploidy = NULL,
                       verbose = FALSE){
 
   if(verbose){message("reading in jabba file")}
 
-  if(is.null(somatic_snv) & is.null(germline_snv))
-    stop("Somatic VCF and/or Germline VCF must be provided.")
+  if(is.null(somatic_snv) & is.null(germline_snv) & is.null(het_pileups_wgs))
+    stop("Somatic VCF, Germline VCF, and/or HetSNPs file must be provided.")
   
   gg = gG(jabba = jabba_rds)
 
   read_size = as.numeric(read_size)
 
-  dryclean.cov <- readRDS(tumor_dryclean)
-  cov.vector = mcols(dryclean.cov)[names(mcols(dryclean.cov)) %in% dryclean_field][, 1]
-  mcols(dryclean.cov) <- NULL
-  mcols(dryclean.cov)$bincov <- cov.vector
-  mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
+  if(!(is.na(tumor_dryclean) || is.null(tumor_dryclean))){
+    dryclean.cov <- readRDS(tumor_dryclean)
+    cov.vector = mcols(dryclean.cov)[names(mcols(dryclean.cov)) %in% dryclean_field][, 1]
+    mcols(dryclean.cov) <- NULL
+    mcols(dryclean.cov)$bincov <- cov.vector
+    mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
+  } else {
+    dryclean.cov <- NULL
+  }
 
+  #' CBS WILL OVERRIDE DRYCLEAN INPUTS
+  #' CBS reduces variance relative to dryclean rescaling alone
+  if(!(is.na(tumor_cbs) || is.null(tumor_cbs))){
+    cbs.cov <- readRDS(tumor_cbs)
+    cbs.vector = mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
+    mcols(cbs.cov) <- NULL
+    mcols(cbs.cov)$bincov <- exp(cbs.vector)
+    cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>% gr.val(cbs.cov, "bincov")
+    cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
+    mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
+    dryclean.cov <- cbs.cov
+  } else {
+    cbs.cov <- NULL
+  }
+
+  
+  if(!(is.na(mask) || is.null(mask))){
+    mask = readRDS(mask)     
+  }
+  
   if(is.na(inferred_sex)){
+
   #constitutional_cn assignment
   #c_subj == 1 for major allele
   #c_subj == 1 for autosomes and X chromosome in females, 0 for X and Y in males
@@ -86,16 +117,18 @@ snvplicity = function(somatic_snv = NULL,
 
   jab = gg$nodes$gr %>% gr.nochr()
   jab = dt2gr(gr2dt(jab)[seqnames == 23, seqnames := "X"])
-  ss.p = jab[as.logical(strand(jab) == "+")]
+  cn.gr = jab[as.logical(strand(jab) == "+")]
   
   somatic.variants = NULL
   germline.variants = NULL
+  het.pileups = NULL
 
   if(verbose){message("succesfully read in JaBbA graph!")}
 
   if(!is.na(somatic_snv) && !is.null(somatic_snv)){
     somatic.variants <- transform_snv(
       vcf = somatic_snv,
+      cn_gr = cn.gr,
       snpeff_path = snpeff_path,
       dryclean.cov = dryclean.cov,
       basecov_field = "avg_basecov",
@@ -104,7 +137,11 @@ snvplicity = function(somatic_snv = NULL,
       normal_id = normal_name,
       purity = purity,
       ploidy = ploidy,
-      filterpass = FALSE
+      filterpass = filterpass,
+      verbose = verbose,
+      normfactor = normfactor,
+      tau_in_gamma = tau_in_gamma,
+      mask = mask
     )    
   }
 
@@ -112,6 +149,7 @@ snvplicity = function(somatic_snv = NULL,
 
     germline.variants <- transform_snv(
       vcf = germline_snv,
+      cn_gr = cn.gr,
       snpeff_path = snpeff_path,
       dryclean.cov = dryclean.cov,
       basecov_field = "avg_basecov",
@@ -120,11 +158,33 @@ snvplicity = function(somatic_snv = NULL,
       normal_id = normal_name,
       purity = purity,
       ploidy = ploidy,
-      filterpass = TRUE
+      filterpass = TRUE,
+      verbose = verbose,
+      normfactor = normfactor,
+      tau_in_gamma = tau_in_gamma,
+      mask = mask
     )
   }
+
+  
+  if(!is.na(het_pileups_wgs) && !is.null(het_pileups_wgs)){
     
-  return(list(somatic.variants, germline.variants))
+    het.pileups <- transform_hets(
+      hets = het_pileups_wgs,
+      cn_gr = cn.gr,
+      dryclean.cov = dryclean.cov,
+      basecov_field = "avg_basecov",
+      inferred_sex = inferred_sex,
+      purity = purity,
+      ploidy = ploidy,
+      verbose = verbose,
+      normfactor = normfactor,
+      tau_in_gamma = tau_in_gamma,
+      mask = mask
+    )    
+  }
+    
+  return(list(somatic.variants, germline.variants, het.pileups))
 }
 
 
@@ -144,7 +204,8 @@ snvplicity = function(somatic_snv = NULL,
 #' @return GRanges of transformed read counts
 #' @export
 transform_snv = function(vcf,
-                         dryclean.cov = NA,
+                         cn_gr,
+                         dryclean.cov = NULL,
                          basecov_field = "avg_basecov",
                          tumor_id = NA,
                          normal_id = NA,
@@ -152,21 +213,35 @@ transform_snv = function(vcf,
                          purity,
                          inferred_sex,
                          filterpass = FALSE,
-                         snpeff_path){
+                         snpeff_path,
+                         verbose = TRUE,
+                         normfactor = 2,
+                         tau_in_gamma = FALSE,
+                         mask = mask){
 
-  snv = parsesnpeff(vcf = somatic_snv,
+  snv = parsesnpeff(vcf = vcf,
                     snpeff_path = snpeff_path,
                     coding_alt_only = FALSE,
                     filterpass = filterpass,
-                    tumor_id = tumor_name,
-                    normal_id = normal_name,
+                    tumor_id = tumor_id,
+                    normal_id = normal_id,
                     keepfile = FALSE,
                     altpipe = TRUE,
                     verbose = verbose)
 
-  names(snv) <- NULL
+  #browser()
+
+  names(snv) <- NULL; fields.to.carry <- character()
   snv.filtered = gr2dt(snv)[, .SD[1], by = c("seqnames", "start", "end")]
   snv.filtered <- snv.filtered[, variant.g := paste0(REF, ">", ALT)] %>% dt2gr
+
+  #browser()
+
+  if(!is.null(mask)){
+    snv.filtered = gr.val(snv.filtered, mask, "blacklisted", na.rm = T) %Q%
+      (!is.na(blacklisted)) %Q%
+      (blacklisted == F)
+  }
     
   #'normalization
   unique.snv = snv.filtered[,c('ref', 'alt')] %>%
@@ -174,7 +249,7 @@ transform_snv = function(vcf,
     (!seqnames == c("Y")) %>%
     unique
 
-  if(!is.na(dryclean.cov)){
+  if(!(is.na(dryclean.cov) || is.null(dryclean.cov))){
     unique.snv = gr.val(unique.snv, dryclean.cov, basecov_field, na.rm = T)
     unique.snv$ref_denoised <- unique.snv$ref * unique.snv$avg_basecov /
       (unique.snv$ref + unique.snv$alt)
@@ -183,12 +258,13 @@ transform_snv = function(vcf,
 
     unique.snv$major.count <- pmax(unique.snv$ref_denoised, unique.snv$alt_denoised, na.rm = T)
     unique.snv$minor.count <- pmin(unique.snv$ref_denoised, unique.snv$alt_denoised, na.rm = T)
+    fields.to.carry <- c("ref_denoised", "alt_denoised")
   } else {
     unique.snv$major.count <- pmax(unique.snv$ref, unique.snv$alt, na.rm = T)
     unique.snv$minor.count <- pmin(unique.snv$ref, unique.snv$alt, na.rm = T)
   }
     
-  m = ((unique.snv$ref + unique.snv$alt) %>% length) * 2
+  m = length(unique.snv$ref + unique.snv$alt) * normfactor
   sf = sum(unique.snv$major.count + unique.snv$minor.count, na.rm = T) / m
   unique.snv$major.count <- unique.snv$major.count / sf
   unique.snv$minor.count <- unique.snv$minor.count / sf
@@ -201,46 +277,190 @@ transform_snv = function(vcf,
   }
 
   values(unique.snv)[, "minor_constitutional_cn"] = ncn.vec - 1
-  unique.snv = gr.val(unique.snv, ss.p, "cn", na.rm = T)
+  unique.snv = gr.val(unique.snv, cn_gr, "cn", na.rm = T)
+
 
   ###### APPLICATION OF FORMULA #####
     
   tau_hat = mean(unique.snv$cn, na.rm = T)
-  tau = ploidy
+  tau = if(tau_in_gamma){
+          ploidy
+        } else {
+          tau_hat
+        }
   alpha = purity
-  beta = alpha / (alpha * tau + 2*(1 - alpha))
-  gamma = 2*(1 - alpha) / (alpha * tau_hat + 2*(1 - alpha))
+  beta = alpha / (alpha * ploidy + 2*(1 - alpha))
+  gamma = 2*(1 - alpha) / (alpha * tau + 2*(1 - alpha))
 
   if(verbose) message(paste0("average total CN of somatic loci: " , tau_hat))
+  if(verbose) message(paste0("ploidy of tumor sample: " , ploidy))
   if(verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
   if(verbose) message("applying transformation")
     
   mcols(unique.snv)$major_snv_copies =
-                    (2 * unique.snv$major.count - (gamma * 0)) / (2 * beta)
+                    (2 * unique.snv$major.count - (gamma * 2)) / (2 * beta)
 
   ## mcols(unique.snv)$minor_snv_copies =
   ## (2 * unique.snv$minor.count - (gamma * unique.snv$minor_constitutional_cn))/ (2 * beta)
 
   mcols(unique.snv)$minor_snv_copies =
                     (2 * unique.snv$minor.count - (gamma * 0)) / (2 * beta)
+
+  mcols(unique.snv)$total_snv_copies =
+                    unique.snv$major_snv_copies + unique.snv$minor_snv_copies
     
   variants = gr.val(snv.filtered %>% gr.nochr,
-                    unique.snv[,c('major.count',
+                    unique.snv[,c(fields.to.carry,
+                                  'major.count',
                                   'minor.count',
+                                  'total_snv_copies',
                                   'major_snv_copies',
                                   'minor_snv_copies',
                                   'cn')],
-                    c('major.count', 'minor.count',
-                    'major_snv_copies', 'minor_snv_copies', 'cn')) %>% gr2dt()
+                    c(fields.to.carry,
+                      'major.count', 'minor.count',
+                      'total_snv_copies',
+                      'major_snv_copies',
+                      'minor_snv_copies',
+                      'cn')) %>% gr2dt()
 
-  variants[alt >= ref, total_copies := major_snv_copies]
-  variants[alt < ref, total_copies := minor_snv_copies]
+  variants[alt >= ref, altered_copies := major_snv_copies]
+  variants[alt < ref , altered_copies := minor_snv_copies]
   #variants[total_copies <= 0, total_copies := 0]
   variants[, VAF := alt / (alt + ref)]
   variants = variants %>% dt2gr
 
   return(variants)
 }
+
+
+#' @name transform_hets
+#' @title function to inhale SNV-laden VCF and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions
+#'
+#' @param vcf Path to snpeff vcf
+#' @param dryclean.cov Tumor drycleaned coverage for denoising/rescaling of REF/ALT counts (OPTIONAL; if provided will denoise)
+#' @param basecov_field field name of dryclean.cov that indicates average Base Coverage per bin
+#' @param tumor_id Tumor name as annotated in the VCF (highly suggested this is provided)
+#' @param normal_id Normal name as annotated in the VCF (highly suggested this is provided)
+#' @param purity Inferred purity input for conversion
+#' @param ploidy Inferred ploidy input for conversion
+#' @param inferred_sex enum of ["M", "F"] that indicates inferred of true sex of patient sample
+#' @param filterpass process only FILTER == PASS variants?
+#' @param snpeff_path Path to unzipped SnpEff toolkit
+#' @return GRanges of transformed read counts
+#' @export
+transform_hets = function(hets,
+                         cn_gr,
+                         dryclean.cov = NULL,
+                         basecov_field = "avg_basecov",
+                         ploidy,
+                         purity,
+                         inferred_sex,
+                         verbose = TRUE,
+                         tau_in_gamma = FALSE,
+                         mask = mask,
+                         normfactor = 2){
+
+  hets.gr <- fread(hets) %>% dt2gr()
+
+  if(!is.null(mask)){
+    hets.gr = gr.val(hets.gr, mask, "blacklisted", na.rm = T) %Q%
+      (!is.na(blacklisted)) %Q%
+      (blacklisted == F)
+  }
+      
+  #'normalization
+  unique.snv = hets.gr[,c('ref.count.t', 'alt.count.t')] %>%
+    gr.nochr %Q%
+    (!seqnames == c("Y")) %>%
+    unique
+
+  fields.to.carry  <- c("ref", "alt")
+
+  names(mcols(unique.snv)) <- fields.to.carry
+  
+  if(!(is.na(dryclean.cov) || is.null(dryclean.cov))){
+    unique.snv = gr.val(unique.snv, dryclean.cov, basecov_field, na.rm = T)
+    unique.snv$ref_denoised <- unique.snv$ref * unique.snv$avg_basecov /
+      (unique.snv$ref + unique.snv$alt)
+    unique.snv$alt_denoised <- unique.snv$alt * unique.snv$avg_basecov /
+      (unique.snv$ref + unique.snv$alt)
+
+    unique.snv$major.count <- pmax(unique.snv$ref_denoised, unique.snv$alt_denoised, na.rm = T)
+    unique.snv$minor.count <- pmin(unique.snv$ref_denoised, unique.snv$alt_denoised, na.rm = T)
+    fields.to.carry <- c(fields.to.carry, "ref_denoised", "alt_denoised")
+  } else {
+    unique.snv$major.count <- pmax(unique.snv$ref, unique.snv$alt, na.rm = T)
+    unique.snv$minor.count <- pmin(unique.snv$ref, unique.snv$alt, na.rm = T)
+  }
+    
+  m = length(unique.snv$ref + unique.snv$alt) * normfactor
+  sf = sum(unique.snv$major.count + unique.snv$minor.count, na.rm = T) / m
+  unique.snv$major.count <- unique.snv$major.count / sf
+  unique.snv$minor.count <- unique.snv$minor.count / sf
+
+  ncn.vec = rep(2, length(unique.snv))
+
+  if (inferred_sex == "M") { # if male 
+    if(verbose) message("Adjusting ncn for XY")
+    ncn.vec[which(as.character(seqnames(unique.snv)) %in% c("chrX", "chrY", "X", "Y"))] = 1
+  }
+
+  values(unique.snv)[, "minor_constitutional_cn"] = ncn.vec - 1
+  unique.snv = gr.val(unique.snv, cn_gr, "cn", na.rm = T)
+
+  ###### APPLICATION OF FORMULA #####
+    
+  tau_hat = mean(unique.snv$cn, na.rm = T)
+  tau = if(tau_in_gamma){
+          ploidy
+        } else {
+          tau_hat
+        }
+  alpha = purity
+  beta = alpha / (alpha * ploidy + 2*(1 - alpha))
+  gamma = 2*(1 - alpha) / (alpha * tau + 2*(1 - alpha))
+
+  if(verbose) message(paste0("average total CN of somatic loci: " , tau_hat))
+  if(verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
+  if(verbose) message("applying transformation")
+    
+  mcols(unique.snv)$major_snv_copies =
+                    (2 * unique.snv$major.count - (gamma * 1)) / (2 * beta)
+
+  mcols(unique.snv)$minor_snv_copies =
+                    (2 * unique.snv$minor.count - (gamma * unique.snv$minor_constitutional_cn))/ (2 * beta)
+
+  ## mcols(unique.snv)$minor_snv_copies =
+  ##                   (2 * unique.snv$minor.count - (gamma * 1)) / (2 * beta)
+
+  mcols(unique.snv)$total_snv_copies =
+                    unique.snv$major_snv_copies + unique.snv$minor_snv_copies
+    
+  variants = gr.val(hets.gr %>% gr.nochr,
+                    unique.snv[,c(fields.to.carry,
+                                  'major.count',
+                                  'minor.count',
+                                  'total_snv_copies',
+                                  'major_snv_copies',
+                                  'minor_snv_copies',
+                                  'cn')],
+                    c(fields.to.carry,
+                      'major.count', 'minor.count',
+                      'total_snv_copies',
+                      'major_snv_copies',
+                      'minor_snv_copies',
+                      'cn')) %>% gr2dt()
+
+  variants[alt >= ref, altered_copies := major_snv_copies]
+  variants[alt < ref , altered_copies := minor_snv_copies]
+  #variants[total_copies <= 0, total_copies := 0]
+  variants[, VAF := alt / (alt + ref)]
+  variants = variants %>% dt2gr
+
+  return(variants)
+}
+
 
 
 #' @name parsesnpeff
