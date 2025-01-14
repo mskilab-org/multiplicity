@@ -25,7 +25,7 @@ snvplicity = function(somatic_snv = NULL,
                       snpeff_path,
                       tumor_name = NULL,
                       normal_name = NULL,
-                      normfactor = 2,
+                      normfactor = 1,
                       filterpass = FALSE,
                       tau_in_gamma = FALSE,
                       purity = NULL, 
@@ -126,6 +126,9 @@ snvplicity = function(somatic_snv = NULL,
   if(verbose){message("succesfully read in JaBbA graph!")}
 
   if(!is.na(somatic_snv) && !is.null(somatic_snv)){
+
+    message("Processing somatic variants.")
+    
     somatic.variants <- transform_snv(
       vcf = somatic_snv,
       cn_gr = cn.gr,
@@ -141,12 +144,15 @@ snvplicity = function(somatic_snv = NULL,
       verbose = verbose,
       normfactor = normfactor,
       tau_in_gamma = tau_in_gamma,
-      mask = mask
+      mask = mask,
+      major_gamma_coeff = 2,
+      minor_gamma_coeff = 0      
     )    
   }
 
   if(!is.na(germline_snv) && !is.null(germline_snv)){
 
+    message("Processing germline variants.")
     germline.variants <- transform_snv(
       vcf = germline_snv,
       cn_gr = cn.gr,
@@ -162,13 +168,15 @@ snvplicity = function(somatic_snv = NULL,
       verbose = verbose,
       normfactor = normfactor,
       tau_in_gamma = tau_in_gamma,
-      mask = mask
+      mask = mask,
+      major_gamma_coeff = 1,
+      minor_gamma_coeff = 1      
     )
   }
-
   
   if(!is.na(het_pileups_wgs) && !is.null(het_pileups_wgs)){
-    
+
+    message("Processing heterozygous SNPs.")
     het.pileups <- transform_hets(
       hets = het_pileups_wgs,
       cn_gr = cn.gr,
@@ -207,6 +215,8 @@ transform_snv = function(vcf,
                          cn_gr,
                          dryclean.cov = NULL,
                          basecov_field = "avg_basecov",
+                         major_gamma_coeff = 1,
+                         minor_gamma_coeff = 1,
                          tumor_id = NA,
                          normal_id = NA,
                          ploidy,
@@ -229,13 +239,9 @@ transform_snv = function(vcf,
                     altpipe = TRUE,
                     verbose = verbose)
 
-  #browser()
-
   names(snv) <- NULL; fields.to.carry <- character()
   snv.filtered = gr2dt(snv)[, .SD[1], by = c("seqnames", "start", "end")]
   snv.filtered <- snv.filtered[, variant.g := paste0(REF, ">", ALT)] %>% dt2gr
-
-  #browser()
 
   if(!is.null(mask)){
     snv.filtered = gr.val(snv.filtered, mask, "blacklisted", na.rm = T) %Q%
@@ -292,19 +298,23 @@ transform_snv = function(vcf,
   beta = alpha / (alpha * ploidy + 2*(1 - alpha))
   gamma = 2*(1 - alpha) / (alpha * tau + 2*(1 - alpha))
 
-  if(verbose) message(paste0("average total CN of somatic loci: " , tau_hat))
+  if(verbose) message(paste0("average total CN of loci: " , tau_hat))
   if(verbose) message(paste0("ploidy of tumor sample: " , ploidy))
   if(verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
   if(verbose) message("applying transformation")
+
+  if(major_gamma_coeff > 2)
+    ncn.add = major_gamma_coeff - 1
+  else
+    ncn.add = 0
     
   mcols(unique.snv)$major_snv_copies =
-                    (2 * unique.snv$major.count - (gamma * 2)) / (2 * beta)
-
-  ## mcols(unique.snv)$minor_snv_copies =
-  ## (2 * unique.snv$minor.count - (gamma * unique.snv$minor_constitutional_cn))/ (2 * beta)
+                    (2 * unique.snv$major.count -
+                     (gamma * (unique.snv$minor_constitutional_cn + ncn.add))) / (2 * beta)
 
   mcols(unique.snv)$minor_snv_copies =
-                    (2 * unique.snv$minor.count - (gamma * 0)) / (2 * beta)
+                    (2 * unique.snv$minor.count -
+                     (gamma * unique.snv$minor_constitutional_cn * minor_gamma_coeff)) / (2 * beta)
 
   mcols(unique.snv)$total_snv_copies =
                     unique.snv$major_snv_copies + unique.snv$minor_snv_copies
@@ -421,7 +431,7 @@ transform_hets = function(hets,
   beta = alpha / (alpha * ploidy + 2*(1 - alpha))
   gamma = 2*(1 - alpha) / (alpha * tau + 2*(1 - alpha))
 
-  if(verbose) message(paste0("average total CN of somatic loci: " , tau_hat))
+  if(verbose) message(paste0("average total CN of heterozygous SNPs: " , tau_hat))
   if(verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
   if(verbose) message("applying transformation")
     
@@ -461,10 +471,7 @@ transform_hets = function(hets,
   return(variants)
 }
 
-
-
 #' @name parsesnpeff
-#' @title how is this not a paragraph?
 #'
 #' @param vcf path to snpeff vcf
 #' @param pad Exposed argument to skitools::ra.overlaps()
