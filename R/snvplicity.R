@@ -485,7 +485,6 @@ transform_hets = function(hets,
 #' @param debug lorem impsum
 #' @return GRangesList of breakpoint pairs with junctions that overlap removed
 #' @export
-
 parsesnpeff = function (
   vcf,
   snpeff_path = "~/modules/SnpEff/source/snpEff",
