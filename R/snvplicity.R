@@ -11,7 +11,7 @@
 #' @param ploidy Ploidy of inputted jabba_rds (optional if metadata of gGraph contains ploidy)
 #' @param snpeff_path Path to unzipped SnpEff toolkit
 #' @return Returns a GRanges with counts and converted copies
-#' @export 
+#' @export
 snvplicity = function(somatic_snv = NULL,
                       germline_snv = NULL,
                       het_pileups_wgs = NULL,
@@ -248,7 +248,7 @@ transform_snv = function(vcf,
       (blacklisted == F)
   }
     
-  #'normalization
+  # normalization
   unique.snv = snv.filtered[,c('ref', 'alt')] %>%
     gr.nochr %Q%
     (!seqnames == c("Y")) %>%
@@ -378,7 +378,7 @@ transform_hets = function(hets,
       (blacklisted == F)
   }
       
-  #'normalization
+  # normalization
   unique.snv = hets.gr[,c('ref.count.t', 'alt.count.t')] %>%
     gr.nochr %Q%
     (!seqnames == c("Y")) %>%
