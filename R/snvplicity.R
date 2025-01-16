@@ -115,7 +115,6 @@ snvplicity = function(somatic_snv = NULL,
             unique(jab$purity)
           }
 
-  jab = gg$nodes$gr %>% gr.nochr()
   jab = dt2gr(gr2dt(jab)[seqnames == 23, seqnames := "X"])
   cn.gr = jab[as.logical(strand(jab) == "+")]
   
@@ -486,22 +485,25 @@ transform_hets = function(hets,
 #' @param debug lorem impsum
 #' @return GRangesList of breakpoint pairs with junctions that overlap removed
 #' @export
-parsesnpeff = function (vcf,
-                        snpeff_path,
-                        tumor_id = NULL,
-                        normal_id = NULL,
-                        filterpass = TRUE,
-                        coding_alt_only = TRUE, 
-                        geno = NULL,
-                        gr = NULL,
-                        keepfile = FALSE,
-                        altpipe = FALSE, 
-                        debug = FALSE,
-                        verbose = FALSE) {
+
+parsesnpeff = function (
+  vcf,
+  snpeff_path = "~/modules/SnpEff/source/snpEff",
+  tumor_id = NULL,
+  normal_id = NULL,
+  filterpass = TRUE,
+  coding_alt_only = TRUE, 
+  geno = NULL,
+  gr = NULL,
+  keepfile = FALSE,
+  altpipe = FALSE, 
+  debug = FALSE,
+  verbose = FALSE,
+  bcftools = "/gpfs/data/imielinskilab/Software/miniforge3/envs/vcftools/bin/bcftools" # FIXME: hardcoded for now.
+  ) {
   if (debug)
     browser()
-  out.name = paste0("tmp_", rand.string(), ".vcf.gz")
-  tmp.path = paste0(tempdir(), "/", out.name)
+  tmp.path = tempfile(pattern = "tmp_", fileext = ".vcf.gz")
   if (!keepfile)
     on.exit(unlink(tmp.path))
   try2({
@@ -511,74 +513,83 @@ parsesnpeff = function (vcf,
     if (coding_alt_only) {
       if(verbose)(message("Coding alterations only."))
       filt = paste0("java -Xmx20m -Xms20m -XX:ParallelGCThreads=1 -jar ",
-                    snpeff_path, "/SnpSift.jar ",
-                    "filter \"( ANN =~ 'chromosome_number_variation|exon_loss_variant|rare_amino_acid|stop_lost|transcript_ablation|coding_sequence|regulatory_region_ablation|TFBS|exon_loss|truncation|start_lost|missense|splice|stop_gained|frame' )\"")
+        snpeff_path, "/SnpSift.jar ",
+        "filter \"( ANN =~ 'chromosome_number_variation|exon_loss_variant|rare_amino_acid|stop_lost|transcript_ablation|coding_sequence|regulatory_region_ablation|TFBS|exon_loss|truncation|start_lost|missense|splice|stop_gained|frame' )\"")
       if (filterpass) {
-        if(verbose)(message("Coding alterations only and FILTER == PASS variants only."))
-        cmd = sprintf(paste(catcmd, "%s | %s | %s | bcftools view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, filt, tmp.path)  } else {if(verbose)(message("Coding alterations only."))
-            cmd = sprintf("cat %s | %s | %s | bcftools norm -Ov -m-any | bgzip -c > %s", vcf, onepline, filt, tmp.path)
-          }
+        if(verbose) (message("Coding alterations only and FILTER == PASS variants only."))
+        cmd = sprintf(paste(catcmd, "%s | %s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, filt, bcftools, tmp.path)  
+      } else {
+        if(verbose) (message("Coding alterations only."))
+          cmd = sprintf("cat %s | %s | %s | bgzip -c > %s", vcf, onepline, filt, tmp.path)
+      }
     } else {
       filt = ""
       if (filterpass){
         if(verbose)(message("FILTER == PASS variants only."))
-        	cmd = sprintf(paste(catcmd, "%s | %s | bcftools view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, tmp.path)
+        cmd = sprintf(paste(catcmd, "%s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, bcftools, tmp.path)
       } else {
         if(verbose)(message("All alterations included."))
-        cmd = sprintf(paste(catcmd, "%s | %s | bcftools norm -Ov -m-any | bgzip -c > %s"), vcf, onepline, tmp.path)
+        cmd = sprintf(paste(catcmd, "%s | %s | bgzip -c > %s"), vcf, onepline, tmp.path)
       }
     }
     if(verbose)(message("Performing command."))
-    	system(cmd)
-      if(verbose)(message("SnpSift successfully applied!"))
-    })
+    system(cmd)
+    if(verbose)(message("SnpSift successfully applied!"))
+  })
   if (!altpipe)
     out = grok_vcf(tmp.path, long = TRUE, geno = geno, gr = gr)
   else {
     if (verbose)(message(paste0("reading in SnpSift VCF.")))
-    vcf = readVcf(tmp.path)
-    vcf = S4Vectors::expand(vcf)
-    rr = S4Vectors::within(rowRanges(vcf), {
-      REF = as.character(REF)
-      ALT = as.character(ALT)
-    })
-    ann = as.data.table(tstrsplit(unlist(info(vcf)$ANN),
-                                  "\\|"))[, 1:15, with = FALSE, drop = FALSE]
+    vcf = VariantAnnotation::readVcf(tmp.path)
+    rr = MatrixGenerics::rowRanges(vcf)
+    rr$REF = as.character(rr$REF)
+    ann = as.data.table(data.table::tstrsplit(unlist(VariantAnnotation::info(vcf)$ANN),
+      "\\|"))[, 1:15, with = FALSE, drop = FALSE]
     fn = c("allele", "annotation", "impact", "gene", "gene_id",
-           "feature_type", "feature_id", "transcript_type", 
-           "rank", "variant.c", "variant.p", "cdna_pos", "cds_pos", 
-           "protein_pos", "distance")
+      "feature_type", "feature_id", "transcript_type", 
+      "rank", "variant.c", "variant.p", "cdna_pos", "cds_pos", 
+      "protein_pos", "distance")
     data.table::setnames(ann, fn)
-    #browser()
     if ("AD" %in% names(geno(vcf))) {
       if (verbose)(message(paste0("parsing AD field in VCF.")))
       vcf.ncol <- ncol(geno(vcf)$AD)
       if (verbose)(message(paste0(vcf.ncol, " columns found in the VCF.")))
       vcf.names <- colnames(geno(vcf)$AD)
-      ## grab the last item in the array if ids not specified... presumably tumor
-        if(vcf.ncol > 1){
-          if (verbose)(message(paste0("parsing tumor and normal alt/ref counts.")))
-          vcf.order <- if(!is.na(tumor_id) && !is.na(normal_id) &&
-                        !is.null(tumor_id) && !is.null(normal_id)){
-                        c(base::match(c(tumor_id, normal_id), vcf.names))
-                     } else {vcf.ncol} # just grab the last column!
-        adep = setnames(as.data.table(geno(vcf)$AD[, vcf.order[1], 1:2]),
-                        c("ref", "alt"))
-        try2(expr = {
-          adep.n = setnames(as.data.table(geno(vcf)$AD[, vcf.order[2], 1:2]),
-                            c("normal.ref", "normal.alt"))
-          adep = adep %>% cbind(adep.n)
-        })
+      if(vcf.ncol > 1) {
+        if (verbose)(message(paste0("parsing tumor and normal alt/ref counts.")))
+        ## grab the last item in the array if ids not specified... presumably tumor
+        tumor_col_id = vcf.ncol ## assume last column bydefault
+        normal_col_id = NA_integer_
+        if (!is.null(tumor_id) && !is.na(tumor_id)) {
+          tumor_col_id = base::match(tumor_id, vcf.names)
+        }
+        if (!is.null(normal_id) && !is.na(normal_id)) {
+          normal_col_id = base::match(normal_id, vcf.names)
+        }
+        adep = data.table::transpose(geno(vcf)$AD[,tumor_col_id])
+        adep = as.data.table(adep)
+        adep = base::subset(
+          adep,
+          select = 1:2
+        )
+        data.table::setnames(adep, c("ref", "alt"))
+        adep$normal.ref = NA_integer_
+        adep$normal.alt = NA_integer_
+        if (!is.na(normal_col_id)) {
+          adep.n = data.table::transpose(geno(vcf)$AD[,normal_col_id])
+          adep$normal.ref = adep.n[[1]]
+          adep$normal.alt = adep.n[[2]]
+        }
         gt = geno(vcf)$GT
-        } else {
-          if (verbose)(message(paste0("parsing only tumor alt/ref counts.")))
-        adep = setnames(as.data.table(geno(vcf)$AD[, vcf.ncol, 1:2]),
-                        c("ref", "alt"))
+      } else {
+        if (verbose)(message(paste0("parsing only tumor alt/ref counts.")))
+        adep = geno(vcf)$AD[, vcf.ncol]
+        adep = data.table::transpose(adep)
+        adep = setnames(as.data.table(adep), c("ref", "alt"))
         gt = geno(vcf)$GT
       }
-    }
-    else if (all(c("AU", "GU", "CU", "TU", "TAR", "TIR") %in%
-                 c(names(geno(vcf))))) {
+    } else if (all(c("AU", "GU", "CU", "TU", "TAR", "TIR") %in%
+                     c(names(geno(vcf))))) {
       if(verbose)(message("parsing AU/GU/CU/TAR/TIR fields in VCF."))
       this.col = dim(geno(vcf)[["AU"]])[2]
       d.a = geno(vcf)[["AU"]][, , 1, drop = F][, this.col, 1]
@@ -586,10 +597,11 @@ parsesnpeff = function (vcf,
       d.t = geno(vcf)[["TU"]][, , 1, drop = F][, this.col, 1]
       d.c = geno(vcf)[["CU"]][, , 1, drop = F][, this.col, 1]
       mat = cbind(A = d.a, G = d.g, T = d.t, C = d.c)
-      #rm("d.a", "d.g", "d.t", "d.c")
       refid = match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(mat))
       refid = ifelse(!isSNV(vcf), NA_integer_, refid)
-      altid = match(as.character(VariantAnnotation::fixed(vcf)$ALT), colnames(mat))
+      ## Note this assumes that multiallelic splitting via bcftools norm -m -any is run upstream (this breaks some fields if run after vcfOneLine.pl)
+        ## otherwise you can't just unlist the ALT field if multiallelics are present
+      altid = match(as.character(unlist(VariantAnnotation::fixed(vcf)$ALT)), colnames(mat))
       altid = ifelse(!isSNV(vcf), NA_integer_, altid)
       refsnv = mat[cbind(seq_len(nrow(mat)), refid)]
       altsnv = mat[cbind(seq_len(nrow(mat)), altid)]
@@ -602,10 +614,11 @@ parsesnpeff = function (vcf,
         n.d.t = geno(vcf)[["TU"]][, , 1, drop = F][, this.col - 1, 1]
         n.d.c = geno(vcf)[["CU"]][, , 1, drop = F][, this.col - 1, 1]
         n.mat = cbind(A = n.d.a, G = n.d.g, T = n.d.t, C = n.d.c)
-        #rm("n.d.a", "n.d.g", "n.d.t", "n.d.c")
         n.refid = match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(n.mat))
         n.refid = ifelse(!isSNV(vcf), NA_integer_, refid)
-        n.altid = match(as.character(VariantAnnotation::fixed(vcf)$ALT), colnames(n.mat))
+        ## Note this assumes that multiallelic splitting via bcftools norm -m -any is run upstream (this breaks some fields if run after vcfOneLine.pl)
+        ## otherwise you can't just unlist the ALT field if multiallelics are present
+        n.altid = match(as.character(unlist(VariantAnnotation::fixed(vcf)$ALT)), colnames(n.mat))
         n.altid = ifelse(!isSNV(vcf), NA_integer_, altid)
         n.refsnv = n.mat[cbind(seq_len(nrow(n.mat)), refid)]
         n.altsnv = n.mat[cbind(seq_len(nrow(n.mat)), altid)]
@@ -613,28 +626,31 @@ parsesnpeff = function (vcf,
         n.altindel = n.d.tir = geno(vcf)[["TIR"]][, , 1, drop = F][, this.icol - 1, 1]
       })
       adep = data.table(ref = coalesce(refsnv, refindel),
-                        alt = coalesce(altsnv, altindel))
+        alt = coalesce(altsnv, altindel))
       try2({
         adep.n = data.table(normal.ref = coalesce(n.refsnv, n.refindel),
-                            normal.alt = coalesce(n.altsnv, n.altindel))
+          normal.alt = coalesce(n.altsnv, n.altindel))
         adep =  adep %>% cbind(adep.n)
       })
-      gt = NULL
+      gt = data.frame(GT = rep_len("", NROW(vcf)))
     } else {
       message("ref and alt count columns not recognized")
       adep = NULL
       gt = NULL
     }
-    ## mcols(rr) = BiocGenerics::cbind(mcols(rr), ann, gt = gt[, 1])
-    mcols(rr) = cbind(as.data.table(mcols(rr)),
-                      ann,
-                      adep,
-                      gt = gt[, 1])
+    ## cbinding S4Vector DataFrame objects works much faster with dataframes
+    ## Need to figure out problems with data.table conversions as some point
+    mcols(rr) = cbind(mcols(rr),
+      data.table::setDF(ann),
+      data.table::setDF(adep),
+      gt = gt[, 1])
+    rr = S4Vectors::expand(rr, "ALT")
+    rr$ALT = as.character(rr$ALT)
     out = rr
-    }
-    this.env = environment()
-    return(this.env$out)
-}
+  }
+  this.env = environment()
+  return(this.env$out)
+} 
 
 #' @name rand.string
 #' @title make a random string

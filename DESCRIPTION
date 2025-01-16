@@ -1,8 +1,8 @@
 Package: SNVplicity
 Title: Converts Counts to Total Copies
 Version: 0.0.0.1
-Authors@R: 
-    person("Johnathan", "Rafailov", "jrafailov12@gmail.com", role = c("aut"))
+Maintainer: Johnathan Rafailov <jrafailov12@gmail.com>
+Authors@R: c(person(given = "Johnathan", family = "Rafailov", role = c("aut", "cre"), email = "jrafailov12@gmail.com"))
 Description: This package is responsible for the total transformation of counts to total copies based on the estimated CN, inferred purity, ploidy discerned by JaBbA.
 License: MIT + file LICENSE
 Encoding: UTF-8
