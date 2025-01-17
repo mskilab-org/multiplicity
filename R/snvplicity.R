@@ -51,8 +51,8 @@ snvplicity = function(somatic_snv = NULL,
     dryclean.cov <- NULL
   }
 
-  #' CBS WILL OVERRIDE DRYCLEAN INPUTS
-  #' CBS reduces variance relative to dryclean rescaling alone
+  # CBS WILL OVERRIDE DRYCLEAN INPUTS
+  # CBS reduces variance relative to dryclean rescaling alone
   if(!(is.na(tumor_cbs) || is.null(tumor_cbs))){
     cbs.cov <- readRDS(tumor_cbs)
     cbs.vector = mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
@@ -79,7 +79,7 @@ snvplicity = function(somatic_snv = NULL,
     ncn.x = gg$nodes$dt[(seqnames == "X" |
                          seqnames == "chrX" |
                          seqnames == "23" |
-                         seqnames == "chr23"), #' MSK-FACETS calls chrX as chr23
+                         seqnames == "chr23"), # MSK-FACETS calls chrX as chr23
                         weighted.mean(cn,
                                       w = end - start + 1,
                                       na.rm = TRUE)]
@@ -470,8 +470,14 @@ transform_hets = function(hets,
   return(variants)
 }
 
-#' @name parsesnpeff
+#' Parse SnpEff VCF
 #'
+#' Ingests and processes a snpeff annotated vcf.
+#' 
+#' VCF annotations from a snpeff file are parsed, 
+#' with optional functionality provided to select
+#' protein coding only mutations or filter = PASS events.
+#' AD and DP fields are also collected for downstream applications.
 #' @param vcf path to snpeff vcf
 #' @param pad Exposed argument to skitools::ra.overlaps()
 #' @param tumor_id Tumor name as annotated in the VCF
