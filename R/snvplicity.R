@@ -107,15 +107,13 @@ snvplicity = function(somatic_snv = NULL,
            } else {
              gg$meta$ploidy
            }
-  purity = if(!is.null(gg$meta$purity)) {
-            gg$meta$purity
-          } else if (!is.null(purity)){
+  purity = if (!is.null(purity)){
             purity
-          } else {
-            unique(jab$purity)
+          } else if (!is.null(gg$meta$purity))  {
+            gg$meta$purity
           }
 
-  jab = dt2gr(gr2dt(jab)[seqnames == 23, seqnames := "X"])
+  jab = dt2gr(gr2dt(gg$nodes$gr)[seqnames == 23, seqnames := "X"])
   cn.gr = jab[as.logical(strand(jab) == "+")]
   
   somatic.variants = NULL
