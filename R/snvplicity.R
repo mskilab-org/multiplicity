@@ -252,7 +252,7 @@ transform_snv = function(vcf,
     (!seqnames == c("Y")) %>%
     unique
 
-  if(!(is.na(dryclean.cov) || is.null(dryclean.cov))){
+  if(!(is.null(dryclean.cov))){
     unique.snv = gr.val(unique.snv, dryclean.cov, basecov_field, na.rm = T)
     unique.snv$ref_denoised <- unique.snv$ref * unique.snv$avg_basecov /
       (unique.snv$ref + unique.snv$alt)
@@ -386,7 +386,7 @@ transform_hets = function(hets,
 
   names(mcols(unique.snv)) <- fields.to.carry
   
-  if(!(is.na(dryclean.cov) || is.null(dryclean.cov))){
+  if(!(is.null(dryclean.cov))){
     unique.snv = gr.val(unique.snv, dryclean.cov, basecov_field, na.rm = T)
     unique.snv$ref_denoised <- unique.snv$ref * unique.snv$avg_basecov /
       (unique.snv$ref + unique.snv$alt)
