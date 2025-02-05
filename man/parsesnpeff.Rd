@@ -2,7 +2,7 @@
 % Please edit documentation in R/snvplicity.R
 \name{parsesnpeff}
 \alias{parsesnpeff}
-\title{Parse SnpEff VCF}
+\title{Parse SnpEff vcfs.}
 \usage{
 parsesnpeff(
   vcf,
@@ -23,35 +23,33 @@ parsesnpeff(
 \arguments{
 \item{vcf}{path to snpeff vcf}
 
+\item{snpeff_path}{Path to unzipped SnpEff toolkit}
+
 \item{tumor_id}{Tumor name as annotated in the VCF}
 
 \item{normal_id}{Normal name as annotated in the VCF}
 
-\item{filterpass}{lorem impsum}
+\item{filterpass}{process only FILTER == PASS variants?}
 
-\item{coding_alt_only}{lorem impsum}
+\item{coding_alt_only}{process only coding alterations?}
 
-\item{geno}{lorem impsum}
+\item{geno}{todo}
 
-\item{gr}{lorem impsum}
+\item{gr}{todo}
 
-\item{altpipe}{lorem impsum}
+\item{keepfile}{todo}
 
-\item{debug}{lorem impsum}
+\item{altpipe}{parsesnpeff via khtools::grok_vcf?}
 
-\item{pad}{Exposed argument to skitools::ra.overlaps()}
+\item{debug}{debug function?}
 
-\item{kepefile}{lorem impsum}
+\item{verbose}{verbose output?}
+
+\item{bcftools}{Path to bcftools toolkit}
 }
 \value{
 GRangesList of breakpoint pairs with junctions that overlap removed
 }
 \description{
-Ingests and processes a snpeff annotated vcf.
-}
-\details{
-VCF annotations from a snpeff file are parsed,
-with optional functionality provided to select
-protein coding only mutations or filter = PASS events.
-AD and DP fields are also collected for downstream applications.
+Ingests and processes a snpeff annotated vcf. #' VCF annotations from a snpeff file are parsed,  with optional functionality provided to select protein coding only mutations or filter = PASS events. AD and DP fields are also collected for downstream applications.
 }

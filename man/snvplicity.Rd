@@ -2,52 +2,13 @@
 % Please edit documentation in R/snvplicity.R
 \name{snvplicity}
 \alias{snvplicity}
-\title{Converts counts to copies.}
+\title{Predecated name for multiplicity}
 \usage{
-snvplicity(
-  somatic_snv = NULL,
-  germline_snv = NULL,
-  het_pileups_wgs = NULL,
-  tumor_cbs = NULL,
-  tumor_dryclean = NULL,
-  dryclean_field,
-  jabba_rds,
-  mask = NULL,
-  inferred_sex = NA,
-  read_size = 151,
-  snpeff_path,
-  tumor_name = NULL,
-  normal_name = NULL,
-  normfactor = 1,
-  filterpass = FALSE,
-  tau_in_gamma = FALSE,
-  purity = NULL,
-  ploidy = NULL,
-  verbose = FALSE
-)
-}
-\arguments{
-\item{somatic_snv}{Path to somatic SNV file}
-
-\item{germline_snv}{Path to germline SNV file}
-
-\item{het_pileups_wgs}{Path to het_pileups_wgs file}
-
-\item{jabba_rds}{Path to jabba file}
-
-\item{snpeff_path}{Path to unzipped SnpEff toolkit}
-
-\item{tumor_name}{Expected name of tumor as annotated in the VCF; highly suggested this is provided for accurate VCF parsing}
-
-\item{normal_name}{Expected name of normal as annotated in the VCF; highly suggested this is provided for accurate VCF parsing}
-
-\item{purity}{Purity of inputted jabba_rds (optional if metadata of gGraph contains purity)}
-
-\item{ploidy}{Ploidy of inputted jabba_rds (optional if metadata of gGraph contains ploidy)}
-}
-\value{
-Returns a GRanges with counts and converted copies
+snvplicity(...)
 }
 \description{
-Converts counts to copies.
+predecated name for power function to run multiplicity
+}
+\details{
+Please use multiplicity() instead
 }

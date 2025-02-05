@@ -1,4 +1,7 @@
 #' @name snvplicity
+#' @title Predecated name for multiplicity
+#' @description predecated name for power function to run multiplicity
+#' @details Please use multiplicity() instead
 #' @export
 snvplicity = function(...){
   multiplicity(...)

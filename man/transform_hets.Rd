@@ -2,7 +2,7 @@
 % Please edit documentation in R/snvplicity.R
 \name{transform_hets}
 \alias{transform_hets}
-\title{function to inhale SNV-laden VCF and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions}
+\title{function to inhale SNP-laden gRanges and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions}
 \usage{
 transform_hets(
   hets,
@@ -19,9 +19,11 @@ transform_hets(
 )
 }
 \arguments{
+\item{hets}{path to heterozygous SNPs gRanges}
+
 \item{dryclean.cov}{Tumor drycleaned coverage for denoising/rescaling of REF/ALT counts (OPTIONAL; if provided will denoise)}
 
-\item{basecov_field}{field name of dryclean.cov that indicates average Base Coverage per bin}
+\item{basecov_field}{field name of dryclean.cov that indicates average \verb{Base Coverage} per bin}
 
 \item{ploidy}{Inferred ploidy input for conversion}
 
@@ -29,19 +31,19 @@ transform_hets(
 
 \item{inferred_sex}{enum of \link{"M", "F"} that indicates inferred of true sex of patient sample}
 
-\item{vcf}{Path to snpeff vcf}
+\item{tau_in_gamma}{Use tau(T) or tau_hat(F) in computation of gamma? tau_hat is the average copy number only of loci; tau is simply ploidy}
 
-\item{tumor_id}{Tumor name as annotated in the VCF (highly suggested this is provided)}
+\item{mask}{if mask gRanges is provided, loci within ranges will be excluded from analysis}
 
-\item{normal_id}{Normal name as annotated in the VCF (highly suggested this is provided)}
+\item{normfactor}{REF + ALT counts are normalized to this value (default = 1)}
 
-\item{filterpass}{process only FILTER == PASS variants?}
+\item{tumor_id}{Tumor name as annotated in the VCF (highly suggested this is provided; otherwise inferences are made about ordering in the VCF)}
 
-\item{snpeff_path}{Path to unzipped SnpEff toolkit}
+\item{normal_id}{Normal name as annotated in the VCF (highly suggested this is provided; otherwise inferences are made about ordering in the VCF)}
 }
 \value{
 GRanges of transformed read counts
 }
 \description{
-function to inhale SNV-laden VCF and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions
+function to inhale SNP-laden gRanges and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions
 }

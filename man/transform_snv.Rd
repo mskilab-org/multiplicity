@@ -25,7 +25,7 @@ transform_snv(
 )
 }
 \arguments{
-\item{vcf}{Path to snpeff vcf}
+\item{vcf}{Path to SnpEff-annotated VCF}
 
 \item{dryclean.cov}{Tumor drycleaned coverage for denoising/rescaling of REF/ALT counts (OPTIONAL; if provided will denoise)}
 
@@ -44,6 +44,14 @@ transform_snv(
 \item{filterpass}{process only FILTER == PASS variants?}
 
 \item{snpeff_path}{Path to unzipped SnpEff toolkit}
+
+\item{verbose}{verbose output?}
+
+\item{normfactor}{REF + ALT counts are normalized to this value (default = 1)}
+
+\item{tau_in_gamma}{Use tau(T) or tau_hat(F) in computation of gamma? tau_hat is the average copy number only of loci; tau is simply ploidy}
+
+\item{mask}{if mask gRanges is provided, loci within ranges will be excluded from analysis}
 }
 \value{
 GRanges of transformed read counts
