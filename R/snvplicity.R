@@ -1,46 +1,62 @@
 #' @name snvplicity
+#' @export
+snvplicity = function(...){
+  multiplicity(...)
+}
+
+#' @name multiplicity
 #' @title Converts counts to copies.
 #'
-#' @param somatic_snv Path to somatic SNV file
-#' @param germline_snv Path to germline SNV file
-#' @param het_pileups_wgs Path to het_pileups_wgs file
+#' @param somatic_snv Path to somatic SNV file.
+#' @param germline_snv Path to germline SNV file.
+#' @param het_pileups_wgs Path to het_pileups_wgs file.
 #' @param jabba_rds Path to jabba file
+#' @param tumor_cbs Path to segmented drycleaned coverage file. will override supplied tumor_dryclean file
+#' @param tumor_dryclean Path to drycleaned coverage file. if provided, will rescale REF/ALT values to expected base coverage as determined by dryclean.
+#' @param dryclean_field specification of field in tumor_dryclean gRanges used as rescaled binned coverage.
+#' @param read_size estimated average read size (default: 151 for Illumina sequencers.)
 #' @param tumor_name Expected name of tumor as annotated in the VCF; highly suggested this is provided for accurate VCF parsing
 #' @param normal_name Expected name of normal as annotated in the VCF; highly suggested this is provided for accurate VCF parsing
+#' @param mask if mask gRanges is provided, loci within ranges will be excluded from analysis
+#' @param inferred_sex enum of ["M", "F"] that indicates inferred of true sex of patient sample (default = NA); optional input; will be inferred from coverage/JaBbA graph if not provided
+#' @param tau_in_gamma Use tau(T) or tau_hat(F) in computation of gamma? tau_hat is the average copy number only of loci; tau is simply ploidy
+#' @param filterpass process only FILTER == PASS variants?
+#' @param normfactor REF + ALT counts are normalized to this value (default = 1)
 #' @param purity Purity of inputted jabba_rds (optional if metadata of gGraph contains purity)
 #' @param ploidy Ploidy of inputted jabba_rds (optional if metadata of gGraph contains ploidy)
 #' @param snpeff_path Path to unzipped SnpEff toolkit
+#' @param verbose verbose output?
 #' @return Returns a GRanges with counts and converted copies
 #' @export
-snvplicity = function(somatic_snv = NULL,
-                      germline_snv = NULL,
-                      het_pileups_wgs = NULL,
-                      tumor_cbs = NULL,
-                      tumor_dryclean = NULL,
-                      dryclean_field, 
-                      jabba_rds,
-                      mask = NULL,
-                      inferred_sex = NA,
-                      read_size = 151,
-                      snpeff_path,
-                      tumor_name = NULL,
-                      normal_name = NULL,
-                      normfactor = 1,
-                      filterpass = FALSE,
-                      tau_in_gamma = FALSE,
-                      purity = NULL, 
-                      ploidy = NULL,
-                      verbose = FALSE){
-
+multiplicity = function(somatic_snv = NULL,
+                        germline_snv = NULL,
+                        het_pileups_wgs = NULL,
+                        tumor_cbs = NULL,
+                        tumor_dryclean = NULL,
+                        dryclean_field, 
+                        jabba_rds,
+                        mask = NULL,
+                        inferred_sex = NA,
+                        read_size = 151,
+                        snpeff_path,
+                        tumor_name = NULL,
+                        normal_name = NULL,
+                        normfactor = 1,
+                        filterpass = FALSE,
+                        tau_in_gamma = FALSE,
+                        purity = NULL, 
+                        ploidy = NULL,
+                        verbose = FALSE){
+  
   if(verbose){message("reading in jabba file")}
-
+  
   if(is.null(somatic_snv) & is.null(germline_snv) & is.null(het_pileups_wgs))
     stop("Somatic VCF, Germline VCF, and/or HetSNPs file must be provided.")
   
   gg = gG(jabba = jabba_rds)
-
+  
   read_size = as.numeric(read_size)
-
+  
   if(!(is.na(tumor_dryclean) || is.null(tumor_dryclean))){
     dryclean.cov <- readRDS(tumor_dryclean)
     cov.vector = mcols(dryclean.cov)[names(mcols(dryclean.cov)) %in% dryclean_field][, 1]
@@ -196,7 +212,7 @@ snvplicity = function(somatic_snv = NULL,
 #' @name transform_snv
 #' @title function to inhale SNV-laden VCF and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions
 #'
-#' @param vcf Path to snpeff vcf
+#' @param vcf Path to SnpEff-annotated VCF
 #' @param dryclean.cov Tumor drycleaned coverage for denoising/rescaling of REF/ALT counts (OPTIONAL; if provided will denoise)
 #' @param basecov_field field name of dryclean.cov that indicates average Base Coverage per bin
 #' @param tumor_id Tumor name as annotated in the VCF (highly suggested this is provided)
@@ -205,7 +221,11 @@ snvplicity = function(somatic_snv = NULL,
 #' @param ploidy Inferred ploidy input for conversion
 #' @param inferred_sex enum of ["M", "F"] that indicates inferred of true sex of patient sample
 #' @param filterpass process only FILTER == PASS variants?
+#' @param normfactor REF + ALT counts are normalized to this value (default = 1)
+#' @param tau_in_gamma Use tau(T) or tau_hat(F) in computation of gamma? tau_hat is the average copy number only of loci; tau is simply ploidy
+#' @param mask if mask gRanges is provided, loci within ranges will be excluded from analysis
 #' @param snpeff_path Path to unzipped SnpEff toolkit
+#' @param verbose verbose output?
 #' @return GRanges of transformed read counts
 #' @export
 transform_snv = function(vcf,
@@ -342,18 +362,19 @@ transform_snv = function(vcf,
 
 
 #' @name transform_hets
-#' @title function to inhale SNV-laden VCF and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions
+#' @title function to inhale SNP-laden gRanges and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions
 #'
-#' @param vcf Path to snpeff vcf
+#' @param hets path to heterozygous SNPs gRanges
 #' @param dryclean.cov Tumor drycleaned coverage for denoising/rescaling of REF/ALT counts (OPTIONAL; if provided will denoise)
-#' @param basecov_field field name of dryclean.cov that indicates average Base Coverage per bin
-#' @param tumor_id Tumor name as annotated in the VCF (highly suggested this is provided)
-#' @param normal_id Normal name as annotated in the VCF (highly suggested this is provided)
+#' @param basecov_field field name of dryclean.cov that indicates average `Base Coverage` per bin
+#' @param tumor_id Tumor name as annotated in the VCF (highly suggested this is provided; otherwise inferences are made about ordering in the VCF)
+#' @param normal_id Normal name as annotated in the VCF (highly suggested this is provided; otherwise inferences are made about ordering in the VCF)
 #' @param purity Inferred purity input for conversion
 #' @param ploidy Inferred ploidy input for conversion
 #' @param inferred_sex enum of ["M", "F"] that indicates inferred of true sex of patient sample
-#' @param filterpass process only FILTER == PASS variants?
-#' @param snpeff_path Path to unzipped SnpEff toolkit
+#' @param tau_in_gamma Use tau(T) or tau_hat(F) in computation of gamma? tau_hat is the average copy number only of loci; tau is simply ploidy
+#' @param mask if mask gRanges is provided, loci within ranges will be excluded from analysis
+#' @param normfactor REF + ALT counts are normalized to this value (default = 1)
 #' @return GRanges of transformed read counts
 #' @export
 transform_hets = function(hets,
@@ -468,25 +489,21 @@ transform_hets = function(hets,
   return(variants)
 }
 
-#' Parse SnpEff VCF
-#'
-#' Ingests and processes a snpeff annotated vcf.
-#' 
-#' VCF annotations from a snpeff file are parsed, 
-#' with optional functionality provided to select
-#' protein coding only mutations or filter = PASS events.
-#' AD and DP fields are also collected for downstream applications.
+#' @title Parse SnpEff vcfs.
+#' @description Ingests and processes a snpeff annotated vcf. #' VCF annotations from a snpeff file are parsed,  with optional functionality provided to select protein coding only mutations or filter = PASS events. AD and DP fields are also collected for downstream applications.
 #' @param vcf path to snpeff vcf
-#' @param pad Exposed argument to skitools::ra.overlaps()
+#' @param snpeff_path Path to unzipped SnpEff toolkit
 #' @param tumor_id Tumor name as annotated in the VCF
 #' @param normal_id Normal name as annotated in the VCF
-#' @param filterpass lorem impsum
-#' @param coding_alt_only lorem impsum
-#' @param geno lorem impsum
-#' @param gr lorem impsum
-#' @param kepefile lorem impsum
-#' @param altpipe lorem impsum
-#' @param debug lorem impsum
+#' @param filterpass process only FILTER == PASS variants?
+#' @param coding_alt_only process only coding alterations?
+#' @param gr todo
+#' @param keepfile todo
+#' @param altpipe parsesnpeff via khtools::grok_vcf?
+#' @param geno todo
+#' @param debug debug function?
+#' @param verbose verbose output?
+#' @param bcftools Path to bcftools toolkit
 #' @return GRangesList of breakpoint pairs with junctions that overlap removed
 #' @export
 parsesnpeff = function (
