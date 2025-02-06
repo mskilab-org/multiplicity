@@ -50,6 +50,14 @@ multiplicity = function(somatic_snv = NULL,
                         purity = NULL, 
                         ploidy = NULL,
                         verbose = FALSE){
+
+  #browser()
+
+  ### if any filepaths are /dev/null, turn them into true NULL characters.
+  vars <- c("somatic_snv", "germline_snv", "het_pileups_wgs", "tumor_dryclean", "tumor_cbs")
+  for (var in vars) {
+    assign(var, normalize_path(get(var)))
+  }
   
   if(verbose){message("reading in jabba file")}
   
@@ -724,4 +732,16 @@ try2 = function(expr, ..., finally) {
            },
            finally = finally,
            ... = ...)
+}
+
+#' @name normalize_path
+#' @title easy function that returns NULL if file path set to /dev/null
+normalize_path <- function(path) {
+  if (is.null(path)) {
+    return(NULL)
+  } else if (path == "/dev/null"){
+    return(NULL)
+  } else {
+    return(path)
+  }
 }
