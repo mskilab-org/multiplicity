@@ -60,8 +60,13 @@ multiplicity = function(somatic_snv = NULL,
   
   read_size = as.numeric(read_size)
   
-  if(!(is.na(tumor_dryclean) || is.null(tumor_dryclean))){
-    dryclean.cov <- readRDS(tumor_dryclean)
+  if(!is.null(tumor_dryclean)){  
+    dryclean.cov <- tryCatch({
+      readRDS(tumor_dryclean)
+    }, error = function(e){
+      message("readRDS failed: ", e$message, "\nFalling back to fread...")
+      fread(tumor_dryclean) %>% dt2gr %>% gr.nochr
+    })
     cov.vector = mcols(dryclean.cov)[names(mcols(dryclean.cov)) %in% dryclean_field][, 1]
     mcols(dryclean.cov) <- NULL
     mcols(dryclean.cov)$bincov <- cov.vector
@@ -70,17 +75,34 @@ multiplicity = function(somatic_snv = NULL,
     dryclean.cov <- NULL
   }
 
+  #browser()
+
   # CBS WILL OVERRIDE DRYCLEAN INPUTS
   # CBS reduces variance relative to dryclean rescaling alone
-  if(!(is.na(tumor_cbs) || is.null(tumor_cbs))){
-    cbs.cov <- readRDS(tumor_cbs)
-    cbs.vector = mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
-    mcols(cbs.cov) <- NULL
-    mcols(cbs.cov)$bincov <- exp(cbs.vector)
-    cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>% gr.val(cbs.cov, "bincov")
-    cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
-    mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
-    dryclean.cov <- cbs.cov
+  if(!is.null(tumor_cbs)){
+    dryclean.cov <- tryCatch({
+      cbs.cov <- readRDS(tumor_cbs)
+      cbs.vector <- mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
+      mcols(cbs.cov) <- NULL
+      mcols(cbs.cov)$bincov <- exp(cbs.vector)
+      cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>% gr.val(cbs.cov, "bincov")
+      cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
+      mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
+      cbs.cov
+    }, error = function(e){
+      #browser()
+      message("readRDS failed, assuming segmented.. ", e$message, "\nFalling back to fread \ndryclean_field will be segment field... \nassuming linear segmented data")
+      cbs.cov <- fread(tumor_cbs) %>% dt2gr %>% gr.nochr
+      cbs.vector <- mcols(cbs.cov)[names(mcols(cbs.cov)) %in% dryclean_field][, 1]
+      mcols(cbs.cov) <- NULL
+      mcols(cbs.cov)$bincov <- cbs.vector
+      cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>%
+        gr.val(cbs.cov, "bincov", na.rm = T) %Q%
+        (!is.na(bincov))
+      #cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
+      mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
+      cbs.cov
+    })
   } else {
     cbs.cov <- NULL
   }
