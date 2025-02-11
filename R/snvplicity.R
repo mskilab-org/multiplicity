@@ -552,10 +552,20 @@ parsesnpeff = function (
   altpipe = FALSE, 
   debug = FALSE,
   verbose = FALSE,
-  bcftools = "/gpfs/data/imielinskilab/Software/miniforge3/envs/vcftools/bin/bcftools" # FIXME: hardcoded for now.
+  bcftools = "bcftools" # FIXME: hardcoded for now.
   ) {
   if (debug)
     browser()
+  
+  bcftools_search_paths = c(bcftools, "bcftools", "/gpfs/data/imielinskilab/Software/miniforge3/envs/vcftools/bin/bcftools")
+  for (bcftools_path in bcftools_search_paths) {
+    bcftools_bin_path = system(paste('which', bcftools_path), intern = TRUE, ignore.stderr = TRUE)
+    if (length(bcftools_bin_path) > 0) {
+      bcftools = bcftools_bin_path
+      break
+    }
+  }
+  
   tmp.path = tempfile(pattern = "tmp_", fileext = ".vcf.gz")
   if (!keepfile)
     on.exit(unlink(tmp.path))
