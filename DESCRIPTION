@@ -1,4 +1,4 @@
-Package: SNVplicity
+Package: multiplicity
 Title: Converts Counts to Total Copies
 Version: 0.0.0.1
 Maintainer: Johnathan Rafailov <jrafailov12@gmail.com>
