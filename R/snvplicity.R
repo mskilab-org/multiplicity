@@ -600,7 +600,7 @@ parsesnpeff = function (
     if(verbose)(message("SnpSift successfully applied!"))
   })
   if (!altpipe)
-    out = grok_vcf(tmp.path, long = TRUE, geno = geno, gr = gr)
+    out = khtools::grok_vcf(tmp.path, long = TRUE, geno = geno, gr = gr)
   else {
     if (verbose)(message(paste0("reading in SnpSift VCF.")))
     vcf = VariantAnnotation::readVcf(tmp.path)
