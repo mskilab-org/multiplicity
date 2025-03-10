@@ -6,6 +6,13 @@ Authors@R: c(person(given = "Johnathan", family = "Rafailov", role = c("aut", "c
 Description: This package is responsible for the total transformation of counts to total copies based on the estimated CN, inferred purity, ploidy discerned by JaBbA.
 License: MIT + file LICENSE
 Encoding: UTF-8
+Remotes:
+  bioc::rtracklayer,
+  bioc::VariantAnnotation,
+  bioc::GenomeInfoDb,
+  github::mskilab-org/gGnome,
+  github::mskilab-org/gUtils,
+  github::mskilab-org/bamUtils
 Imports:
   gGnome,
   gUtils,
@@ -15,16 +22,10 @@ Imports:
   khtools,
   skidb,
   skitools,
-  data.table
-Depends:
-  gGnome,
-  gUtils,
-  bamUtils,
-  tidyverse,
-  rtracklayer,
-  khtools,
-  skidb,
-  skitools,
-  data.table
+  data.table,
+  VariantAnnotation,
+  GenomeInfoDb,
+  MatrixGenerics,
+  magrittr
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
