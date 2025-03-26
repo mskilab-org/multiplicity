@@ -68,7 +68,6 @@ multiplicity <- function(somatic_snv = NULL,
 
   is_cov_character = is.character(tumor_dryclean)
   is_cov_len_one = NROW(tumor_dryclean) == 1
-  is_cov_len_zero = NROW(tumor_dryclean) == 0
   is_cov_null = is.null(tumor_dryclean)
   is_cov_na = is_cov_len_one && (is.na(tumor_dryclean) || identical(tumor_dryclean, "NA"))
   is_cov_existent = is_cov_character && is_cov_len_one && file.exists(tumor_dryclean)
