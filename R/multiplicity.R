@@ -73,6 +73,7 @@ multiplicity <- function(somatic_snv = NULL,
   is_cov_existent = is_cov_character && is_cov_len_one && file.exists(tumor_dryclean)
   is_cov_nonexistent = is_cov_character && is_cov_len_one && !file.exists(tumor_dryclean)
   is_cov_invalid = is_cov_character && !is_cov_len_one
+  dryclean.cov = NULL
   if (!is_cov_null && !is_cov_na) {
     if (is_cov_nonexistent) {
       stop("Path to coverage provided to 'tumor_dryclean' does not exist")
@@ -101,8 +102,6 @@ multiplicity <- function(somatic_snv = NULL,
     mcols(dryclean.cov) <- NULL
     mcols(dryclean.cov)$bincov <- cov.vector
     mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
-  } else {
-    dryclean.cov <- NULL
   }
 
   # CBS WILL OVERRIDE DRYCLEAN INPUTS
@@ -114,6 +113,7 @@ multiplicity <- function(somatic_snv = NULL,
   is_seg_existent = is_seg_character && is_seg_len_one && file.exists(tumor_cbs)
   is_seg_nonexistent = is_seg_character && is_seg_len_one && !file.exists(tumor_cbs)
   is_seg_invalid = is_seg_character && !is_seg_len_one
+  cov.cbs = NULL
   if (!is_seg_null && !is_seg_na) {
     if (is_seg_nonexistent) {
       stop("Path to segmentation provided to 'tumor_cbs' does not exist")
@@ -149,8 +149,6 @@ multiplicity <- function(somatic_snv = NULL,
       message("Provided segmentation superseding drycleaned binned coverage")
     }
     dryclean.cov = cbs.cov
-  } else {
-    cbs.cov <- NULL
   }
 
 
