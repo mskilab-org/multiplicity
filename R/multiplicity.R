@@ -66,18 +66,38 @@ multiplicity <- function(somatic_snv = NULL,
 
   read_size <- as.numeric(read_size)
 
-  if (!is.null(tumor_dryclean)) {
-    dryclean.cov <- tryCatch(
-      {
-        readRDS(tumor_dryclean)
-      },
-      error = function(e) {
-        message("readRDS failed: ", e$message, "\nFalling back to fread...")
-        fread(tumor_dryclean) %>%
-          dt2gr() %>%
-          gr.nochr()
-      }
-    )
+  is_cov_character = is.character(tumor_dryclean)
+  is_cov_len_one = NROW(tumor_dryclean) == 1
+  is_cov_len_zero = NROW(tumor_dryclean) == 0
+  is_cov_null = is.null(tumor_dryclean)
+  is_cov_na = is_cov_len_one && (is.na(tumor_dryclean) || identical(tumor_dryclean, "NA"))
+  is_cov_existent = is_cov_character && is_cov_len_one && file.exists(tumor_dryclean)
+  is_cov_nonexistent = is_cov_character && is_cov_len_one && !file.exists(tumor_dryclean)
+  is_cov_invalid = is_cov_character && !is_cov_len_one
+  if (!is_cov_null && !is_cov_na) {
+    if (is_cov_nonexistent) {
+      stop("Path to coverage provided to 'tumor_dryclean' does not exist")
+    } else if (is_cov_invalid) {
+      stop("Path to coverage provided to 'tumor_dryclean' is a character but not length 1")
+    }
+    is_cov_rds = is_cov_existent && grepl("rds$", tumor_dryclean)
+    is_cov_possibly_txt = is_cov_existent && !is_cov_rds
+    if (is_cov_rds) {
+      dryclean.cov = readRDS(tumor_dryclean) 
+    } else if (is_cov_possibly_txt) {
+      dryclean.cov = fread(tumor_dryclean)
+    } else {
+      dryclean.cov = tumor_dryclean
+    }
+    is_cov_table = inherits(dryclean.cov, "data.frame")
+    if (is_cov_table) {
+      dryclean.cov = gUtils::dt2gr(dryclean.cov)
+      GenomeInfoDb::seqlevelsStyle(dryclean.cov) = "NCBI" ## better than gr.nochr()
+    }
+    is_cov_granges = inherits(dryclean.cov, "GRanges")
+    if (!is_cov_granges) {
+      stop("Provided coverage must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format")
+    }
     cov.vector <- mcols(dryclean.cov)[names(mcols(dryclean.cov)) %in% dryclean_field][, 1]
     mcols(dryclean.cov) <- NULL
     mcols(dryclean.cov)$bincov <- cov.vector
@@ -88,35 +108,48 @@ multiplicity <- function(somatic_snv = NULL,
 
   # CBS WILL OVERRIDE DRYCLEAN INPUTS
   # CBS reduces variance relative to dryclean rescaling alone
-  if (!is.null(tumor_cbs)) {
-    dryclean.cov <- tryCatch(
-      {
-        cbs.cov <- readRDS(tumor_cbs)
-        cbs.vector <- mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
-        mcols(cbs.cov) <- NULL
-        mcols(cbs.cov)$bincov <- exp(cbs.vector)
-        cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>% gr.val(cbs.cov, "bincov")
-        cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
-        mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
-        cbs.cov
-      },
-      error = function(e) {
-        # browser()
-        message("readRDS failed, assuming segmented.. ", e$message, "\nFalling back to fread \ndryclean_field will be segment field... \nassuming linear segmented data")
-        cbs.cov <- fread(tumor_cbs) %>%
-          dt2gr() %>%
-          gr.nochr()
-        cbs.vector <- mcols(cbs.cov)[names(mcols(cbs.cov)) %in% dryclean_field][, 1]
-        mcols(cbs.cov) <- NULL
-        mcols(cbs.cov)$bincov <- cbs.vector
-        cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>%
-          gr.val(cbs.cov, "bincov", na.rm = T) %Q%
-          (!is.na(bincov))
-        # cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
-        mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
-        cbs.cov
-      }
-    )
+  is_seg_character = is.character(tumor_cbs)
+  is_seg_len_one = NROW(tumor_cbs) == 1
+  is_seg_null = is.null(tumor_cbs)
+  is_seg_na = is_seg_len_one && (is.na(tumor_cbs) || identical(tumor_cbs, "NA"))
+  is_seg_existent = is_seg_character && is_seg_len_one && file.exists(tumor_cbs)
+  is_seg_nonexistent = is_seg_character && is_seg_len_one && !file.exists(tumor_cbs)
+  is_seg_invalid = is_seg_character && !is_seg_len_one
+  if (!is_seg_null && !is_seg_na) {
+    if (is_seg_nonexistent) {
+      stop("Path to segmentation provided to 'tumor_cbs' does not exist")
+    } else if (is_seg_invalid) {
+      stop("Path to segmentation provided to 'tumor_cbs' is invalid (length == 0)")
+    }
+    is_seg_rds = is_seg_existent && grepl("rds$", tumor_cbs)
+    is_seg_possibly_txt = is_seg_existent && !is_seg_rds
+    if (is_seg_rds) {
+      cbs.cov = readRDS(tumor_cbs) 
+    } else if (is_seg_possibly_txt) {
+      cbs.cov = fread(tumor_cbs)
+    } else {
+      cbs.cov = tumor_cbs
+    }
+    is_seg_table = inherits(cbs.cov, "data.frame")
+    if (is_seg_table) {
+      cbs.cov = gUtils::dt2gr(cbs.cov)
+      GenomeInfoDb::seqlevelsStyle(cbs.cov) = "NCBI" ## better than gr.nochr()
+    }
+    is_seg_granges = inherits(cbs.cov, "GRanges")
+    if (!is_seg_granges) {
+      stop("Provided segmentation must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format")
+    }
+    cbs.vector <- mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
+    mcols(cbs.cov) <- NULL
+    if (verbose) message("Assuming segmentation seg.mean is log-scaled, converting to linear")
+    mcols(cbs.cov)$bincov <- exp(cbs.vector)
+    cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>% gr.val(cbs.cov, "bincov")
+    cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
+    mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
+    if (exists("dryclean.cov")) {
+      message("Provided segmentation superseding drycleaned binned coverage")
+    }
+    dryclean.cov = cbs.cov
   } else {
     cbs.cov <- NULL
   }
@@ -561,184 +594,193 @@ transform_hets <- function(hets,
 #' @param bcftools Path to bcftools toolkit
 #' @return GRangesList of breakpoint pairs with junctions that overlap removed
 #' @export
-parsesnpeff <- function(
-    vcf,
-    snpeff_path = "~/modules/SnpEff/source/snpEff",
-    tumor_id = NULL,
-    normal_id = NULL,
-    filterpass = TRUE,
-    coding_alt_only = TRUE,
-    geno = NULL,
-    gr = NULL,
-    keepfile = FALSE,
-    altpipe = FALSE,
-    debug = FALSE,
-    verbose = FALSE,
-    bcftools = "/gpfs/data/imielinskilab/Software/miniforge3/envs/vcftools/bin/bcftools" # FIXME: hardcoded for now.
-    ) {
-  if (debug) {
+#' @name parsesnpeff
+#' @title how is this not a paragraph?
+#'
+#' @param vcf path to snpeff vcf
+#' @param pad Exposed argument to skitools::ra.overlaps()
+#' @param tumor_id Tumor name as annotated in the VCF
+#' @param normal_id Normal name as annotated in the VCF
+#' @param filterpass lorem impsum
+#' @param coding_alt_only lorem impsum
+#' @param geno lorem impsum
+#' @param gr lorem impsum
+#' @param kepefile lorem impsum
+#' @param altpipe lorem impsum
+#' @param debug lorem impsum
+#' @return GRangesList of breakpoint pairs with junctions that overlap removed
+#' @export
+parsesnpeff = function (
+  vcf,
+  snpeff_path = "~/modules/SnpEff/source/snpEff",
+  tumor_id = NULL,
+  normal_id = NULL,
+  filterpass = TRUE,
+  coding_alt_only = TRUE, 
+  geno = NULL,
+  gr = NULL,
+  keepfile = FALSE,
+  altpipe = FALSE, 
+  debug = FALSE,
+  verbose = FALSE,
+  bcftools = "/gpfs/data/imielinskilab/Software/miniforge3/envs/vcftools/bin/bcftools" # FIXME: hardcoded for now.
+  ) {
+  if (debug)
     browser()
-  }
-  tmp.path <- tempfile(pattern = "tmp_", fileext = ".vcf.gz")
-  if (!keepfile) {
+  tmp.path = tempfile(pattern = "tmp_", fileext = ".vcf.gz")
+  if (!keepfile)
     on.exit(unlink(tmp.path))
-  }
   try2({
-    catcmd <- if (grepl("(.gz)$", vcf)) "zcat" else "cat"
-    onepline <- paste0(snpeff_path, "/scripts/vcfEffOnePerLine.pl")
-    if (verbose) (message(paste0("applying SnpSift to VCF: ", vcf)))
+    catcmd = if (grepl("(.gz)$", vcf)) "zcat" else "cat"
+    onepline = paste0(snpeff_path, "/scripts/vcfEffOnePerLine.pl")
+    if (verbose)(message(paste0("applying SnpSift to VCF: ", vcf)))
     if (coding_alt_only) {
-      if (verbose) (message("Coding alterations only."))
-      filt <- paste0(
-        "java -Xmx20m -Xms20m -XX:ParallelGCThreads=1 -jar ",
+      if(verbose)(message("Coding alterations only."))
+      filt = paste0("java -Xmx20m -Xms20m -XX:ParallelGCThreads=1 -jar ",
         snpeff_path, "/SnpSift.jar ",
-        "filter \"( ANN =~ 'chromosome_number_variation|exon_loss_variant|rare_amino_acid|stop_lost|transcript_ablation|coding_sequence|regulatory_region_ablation|TFBS|exon_loss|truncation|start_lost|missense|splice|stop_gained|frame' )\""
-      )
+        "filter \"( ANN =~ 'chromosome_number_variation|exon_loss_variant|rare_amino_acid|stop_lost|transcript_ablation|coding_sequence|regulatory_region_ablation|TFBS|exon_loss|truncation|start_lost|missense|splice|stop_gained|frame' )\"")
       if (filterpass) {
-        if (verbose) (message("Coding alterations only and FILTER == PASS variants only."))
-        cmd <- sprintf(paste(catcmd, "%s | %s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, filt, bcftools, tmp.path)
+        if(verbose) (message("Coding alterations only and FILTER == PASS variants only."))
+        cmd = sprintf(paste(catcmd, "%s | %s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, filt, bcftools, tmp.path)  
       } else {
-        if (verbose) (message("Coding alterations only."))
-        cmd <- sprintf("cat %s | %s | %s | bgzip -c > %s", vcf, onepline, filt, tmp.path)
+        if(verbose) (message("Coding alterations only."))
+          cmd = sprintf("cat %s | %s | %s | bgzip -c > %s", vcf, onepline, filt, tmp.path)
       }
     } else {
-      filt <- ""
-      if (filterpass) {
-        if (verbose) (message("FILTER == PASS variants only."))
-        cmd <- sprintf(paste(catcmd, "%s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, bcftools, tmp.path)
+      filt = ""
+      if (filterpass){
+        if(verbose)(message("FILTER == PASS variants only."))
+        cmd = sprintf(paste(catcmd, "%s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, bcftools, tmp.path)
       } else {
-        if (verbose) (message("All alterations included."))
-        cmd <- sprintf(paste(catcmd, "%s | %s | bgzip -c > %s"), vcf, onepline, tmp.path)
+        if(verbose)(message("All alterations included."))
+        cmd = sprintf(paste(catcmd, "%s | %s | bgzip -c > %s"), vcf, onepline, tmp.path)
       }
     }
-    if (verbose) (message("Performing command."))
+    if(verbose)(message("Performing command."))
     system(cmd)
-    if (verbose) (message("SnpSift successfully applied!"))
+    if(verbose)(message("SnpSift successfully applied!"))
   })
-  if (!altpipe) {
-    out <- grok_vcf(tmp.path, long = TRUE, geno = geno, gr = gr)
-  } else {
-    if (verbose) (message(paste0("reading in SnpSift VCF.")))
-    vcf <- VariantAnnotation::readVcf(tmp.path)
-    rr <- MatrixGenerics::rowRanges(vcf)
-    rr$REF <- as.character(rr$REF)
-    ann <- as.data.table(data.table::tstrsplit(
-      unlist(VariantAnnotation::info(vcf)$ANN),
-      "\\|"
-    ))[, 1:15, with = FALSE, drop = FALSE]
-    fn <- c(
-      "allele", "annotation", "impact", "gene", "gene_id",
-      "feature_type", "feature_id", "transcript_type",
-      "rank", "variant.c", "variant.p", "cdna_pos", "cds_pos",
-      "protein_pos", "distance"
-    )
+  if (!altpipe)
+    out = grok_vcf(tmp.path, long = TRUE, geno = geno, gr = gr)
+  else {
+    if (verbose)(message(paste0("reading in SnpSift VCF.")))
+    vcf = VariantAnnotation::readVcf(tmp.path)
+    rr = MatrixGenerics::rowRanges(vcf)
+    rr$REF = as.character(rr$REF)
+    vcf_geno_lst = VariantAnnotation::geno(vcf)
+    ann = as.data.table(data.table::tstrsplit(unlist(VariantAnnotation::info(vcf)$ANN),
+      "\\|"))[, 1:15, with = FALSE, drop = FALSE]
+    fn = c("allele", "annotation", "impact", "gene", "gene_id",
+      "feature_type", "feature_id", "transcript_type", 
+      "rank", "variant.c", "variant.p", "cdna_pos", "cds_pos", 
+      "protein_pos", "distance")
     data.table::setnames(ann, fn)
-    if ("AD" %in% names(geno(vcf))) {
-      if (verbose) (message(paste0("parsing AD field in VCF.")))
-      vcf.ncol <- ncol(geno(vcf)$AD)
-      if (verbose) (message(paste0(vcf.ncol, " columns found in the VCF.")))
-      vcf.names <- colnames(geno(vcf)$AD)
-      if (vcf.ncol > 1) {
-        if (verbose) (message(paste0("parsing tumor and normal alt/ref counts.")))
+    if ("AD" %in% names(vcf_geno_lst)) {
+      if (verbose)(message(paste0("parsing AD field in VCF.")))
+      vcf.ncol <- ncol(vcf_geno_lst$AD)
+      if (verbose)(message(paste0(vcf.ncol, " columns found in the VCF.")))
+      vcf.names <- colnames(vcf_geno_lst$AD)
+      if(vcf.ncol > 1) {
+        if (verbose)(message(paste0("parsing tumor and normal alt/ref counts.")))
         ## grab the last item in the array if ids not specified... presumably tumor
-        tumor_col_id <- vcf.ncol ## assume last column bydefault
-        normal_col_id <- NA_integer_
-        if (!is.null(tumor_id) && !is.na(tumor_id)) {
-          tumor_col_id <- base::match(tumor_id, vcf.names)
+        tumor_col_id = vcf.ncol ## assume last column bydefault
+        normal_col_id = NA_integer_
+        is_id_matchable = function(id) {
+          is_null_or_na = is.null(id) || is.na(id) || identical(id, "NA")
+          return(!is_null_or_na)
         }
-        if (!is.null(normal_id) && !is.na(normal_id)) {
-          normal_col_id <- base::match(normal_id, vcf.names)
+        if (is_id_matchable(tumor_id) && any(tumor_id %in% vcf.names)) {
+          tumor_col_id = base::match(tumor_id, vcf.names)
         }
-        adep <- data.table::transpose(geno(vcf)$AD[, tumor_col_id])
-        adep <- as.data.table(adep)
-        adep <- base::subset(
+        if (is_id_matchable(normal_id) && any(normal_id %in% vcf.names)) {
+          normal_col_id = base::match(normal_id, vcf.names)
+        }
+        adep = data.table::transpose(vcf_geno_lst$AD[,tumor_col_id])
+        adep = as.data.table(adep)
+        adep = base::subset(
           adep,
           select = 1:2
         )
         data.table::setnames(adep, c("ref", "alt"))
-        adep$normal.ref <- NA_integer_
-        adep$normal.alt <- NA_integer_
+        adep$normal.ref = NA_integer_
+        adep$normal.alt = NA_integer_
         if (!is.na(normal_col_id)) {
-          adep.n <- data.table::transpose(geno(vcf)$AD[, normal_col_id])
-          adep$normal.ref <- adep.n[[1]]
-          adep$normal.alt <- adep.n[[2]]
+          adep.n = data.table::transpose(vcf_geno_lst$AD[,normal_col_id])
+          adep$normal.ref = adep.n[[1]]
+          adep$normal.alt = adep.n[[2]]
         }
-        gt <- geno(vcf)$GT
+        gt = vcf_geno_lst$GT
       } else {
-        if (verbose) (message(paste0("parsing only tumor alt/ref counts.")))
-        adep <- geno(vcf)$AD[, vcf.ncol]
-        adep <- data.table::transpose(adep)
-        adep <- setnames(as.data.table(adep), c("ref", "alt"))
-        gt <- geno(vcf)$GT
+        if (verbose)(message(paste0("parsing only tumor alt/ref counts.")))
+        adep = vcf_geno_lst$AD[, vcf.ncol]
+        adep = data.table::transpose(adep)
+        adep = setnames(as.data.table(adep), c("ref", "alt"))
+        gt = vcf_geno_lst$GT
       }
     } else if (all(c("AU", "GU", "CU", "TU", "TAR", "TIR") %in%
-      c(names(geno(vcf))))) {
-      if (verbose) (message("parsing AU/GU/CU/TAR/TIR fields in VCF."))
-      this.col <- dim(geno(vcf)[["AU"]])[2]
-      d.a <- geno(vcf)[["AU"]][, , 1, drop = F][, this.col, 1]
-      d.g <- geno(vcf)[["GU"]][, , 1, drop = F][, this.col, 1]
-      d.t <- geno(vcf)[["TU"]][, , 1, drop = F][, this.col, 1]
-      d.c <- geno(vcf)[["CU"]][, , 1, drop = F][, this.col, 1]
-      mat <- cbind(A = d.a, G = d.g, T = d.t, C = d.c)
-      refid <- match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(mat))
-      refid <- ifelse(!isSNV(vcf), NA_integer_, refid)
+                     c(names(vcf_geno_lst)))) {
+      if(verbose)(message("parsing AU/GU/CU/TAR/TIR fields in VCF."))
+      this.col = dim(vcf_geno_lst[["AU"]])[2]
+      d.a = vcf_geno_lst[["AU"]][, , 1, drop = F][, this.col, 1]
+      d.g = vcf_geno_lst[["GU"]][, , 1, drop = F][, this.col, 1]
+      d.t = vcf_geno_lst[["TU"]][, , 1, drop = F][, this.col, 1]
+      d.c = vcf_geno_lst[["CU"]][, , 1, drop = F][, this.col, 1]
+      mat = cbind(A = d.a, G = d.g, T = d.t, C = d.c)
+      refid = match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(mat))
+      refid = ifelse(!isSNV(vcf), NA_integer_, refid)
       ## Note this assumes that multiallelic splitting via bcftools norm -m -any is run upstream (this breaks some fields if run after vcfOneLine.pl)
-      ## otherwise you can't just unlist the ALT field if multiallelics are present
-      altid <- match(as.character(unlist(VariantAnnotation::fixed(vcf)$ALT)), colnames(mat))
-      altid <- ifelse(!isSNV(vcf), NA_integer_, altid)
-      refsnv <- mat[cbind(seq_len(nrow(mat)), refid)]
-      altsnv <- mat[cbind(seq_len(nrow(mat)), altid)]
-      this.icol <- dim(geno(vcf)[["TAR"]])[2]
-      refindel <- d.tar <- geno(vcf)[["TAR"]][, , 1, drop = F][, this.icol, 1]
-      altindel <- d.tir <- geno(vcf)[["TIR"]][, , 1, drop = F][, this.icol, 1]
+        ## otherwise you can't just unlist the ALT field if multiallelics are present
+      altid = match(as.character(unlist(VariantAnnotation::fixed(vcf)$ALT)), colnames(mat))
+      altid = ifelse(!isSNV(vcf), NA_integer_, altid)
+      refsnv = mat[cbind(seq_len(nrow(mat)), refid)]
+      altsnv = mat[cbind(seq_len(nrow(mat)), altid)]
+      this.icol = dim(vcf_geno_lst[["TAR"]])[2]
+      refindel = d.tar = vcf_geno_lst[["TAR"]][, , 1, drop = F][, this.icol, 1]
+      altindel = d.tir = vcf_geno_lst[["TIR"]][, , 1, drop = F][, this.icol, 1]
       try2({
-        n.d.a <- geno(vcf)[["AU"]][, , 1, drop = F][, this.col - 1, 1]
-        n.d.g <- geno(vcf)[["GU"]][, , 1, drop = F][, this.col - 1, 1]
-        n.d.t <- geno(vcf)[["TU"]][, , 1, drop = F][, this.col - 1, 1]
-        n.d.c <- geno(vcf)[["CU"]][, , 1, drop = F][, this.col - 1, 1]
-        n.mat <- cbind(A = n.d.a, G = n.d.g, T = n.d.t, C = n.d.c)
-        n.refid <- match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(n.mat))
-        n.refid <- ifelse(!isSNV(vcf), NA_integer_, refid)
+        n.d.a = vcf_geno_lst[["AU"]][, , 1, drop = F][, this.col - 1, 1]
+        n.d.g = vcf_geno_lst[["GU"]][, , 1, drop = F][, this.col - 1, 1]
+        n.d.t = vcf_geno_lst[["TU"]][, , 1, drop = F][, this.col - 1, 1]
+        n.d.c = vcf_geno_lst[["CU"]][, , 1, drop = F][, this.col - 1, 1]
+        n.mat = cbind(A = n.d.a, G = n.d.g, T = n.d.t, C = n.d.c)
+        n.refid = match(as.character(VariantAnnotation::fixed(vcf)$REF), colnames(n.mat))
+        n.refid = ifelse(!isSNV(vcf), NA_integer_, refid)
         ## Note this assumes that multiallelic splitting via bcftools norm -m -any is run upstream (this breaks some fields if run after vcfOneLine.pl)
         ## otherwise you can't just unlist the ALT field if multiallelics are present
-        n.altid <- match(as.character(unlist(VariantAnnotation::fixed(vcf)$ALT)), colnames(n.mat))
-        n.altid <- ifelse(!isSNV(vcf), NA_integer_, altid)
-        n.refsnv <- n.mat[cbind(seq_len(nrow(n.mat)), refid)]
-        n.altsnv <- n.mat[cbind(seq_len(nrow(n.mat)), altid)]
-        n.refindel <- n.d.tar <- geno(vcf)[["TAR"]][, , 1, drop = F][, this.icol - 1, 1]
-        n.altindel <- n.d.tir <- geno(vcf)[["TIR"]][, , 1, drop = F][, this.icol - 1, 1]
+        n.altid = match(as.character(unlist(VariantAnnotation::fixed(vcf)$ALT)), colnames(n.mat))
+        n.altid = ifelse(!isSNV(vcf), NA_integer_, altid)
+        n.refsnv = n.mat[cbind(seq_len(nrow(n.mat)), refid)]
+        n.altsnv = n.mat[cbind(seq_len(nrow(n.mat)), altid)]
+        n.refindel = n.d.tar = vcf_geno_lst[["TAR"]][, , 1, drop = F][, this.icol - 1, 1]
+        n.altindel = n.d.tir = vcf_geno_lst[["TIR"]][, , 1, drop = F][, this.icol - 1, 1]
       })
-      adep <- data.table(
-        ref = coalesce(refsnv, refindel),
-        alt = coalesce(altsnv, altindel)
-      )
+      adep = data.table(ref = coalesce(refsnv, refindel),
+        alt = coalesce(altsnv, altindel))
       try2({
-        adep.n <- data.table(
-          normal.ref = coalesce(n.refsnv, n.refindel),
-          normal.alt = coalesce(n.altsnv, n.altindel)
-        )
-        adep <- adep %>% cbind(adep.n)
+        adep.n = data.table(normal.ref = coalesce(n.refsnv, n.refindel),
+          normal.alt = coalesce(n.altsnv, n.altindel))
+        adep =  adep %>% cbind(adep.n)
       })
-      gt <- data.frame(GT = rep_len("", NROW(vcf)))
+      gt = data.frame(GT = rep_len("", NROW(vcf)))
     } else {
       message("ref and alt count columns not recognized")
-      adep <- NULL
-      gt <- NULL
+      adep = NULL
+      gt = NULL
     }
     ## cbinding S4Vector DataFrame objects works much faster with dataframes
     ## Need to figure out problems with data.table conversions as some point
-    mcols(rr) <- cbind(mcols(rr),
+    mcols(rr) = cbind(mcols(rr),
       data.table::setDF(ann),
       data.table::setDF(adep),
-      gt = gt[, 1]
-    )
-    rr <- S4Vectors::expand(rr, "ALT")
-    rr$ALT <- as.character(rr$ALT)
-    out <- rr
+      gt = gt[, 1])
+    rr = S4Vectors::expand(rr, "ALT")
+    rr$ALT = as.character(rr$ALT)
+    out = rr
   }
-  this.env <- environment()
+  this.env = environment()
   return(this.env$out)
-}
+} 
+
 
 #' @name rand.string
 #' @title make a random string
@@ -776,13 +818,17 @@ try2 <- function(expr, ..., finally) {
 #' @name normalize_path
 #' @title easy function that returns NULL if file path set to /dev/null
 normalize_path <- function(path) {
-  if (is.null(path)) {
-    return(NULL)
-  } else if (path == "/dev/null") {
-    return(NULL)
-  } else {
-    return(path)
-  }
+  is_character = is.character(path)
+  is_length_one = NROW(path) == 1
+  is_a_potential_path = is_character && is_length_one
+  is_invalid_input = is_character && !is_length_one
+  out = path
+  if (is_a_potential_path && !file.exists(path)) stop("Provided path does not exist")
+  if (is_invalid_input) stop("Provided invalid paths (not length == 1)")
+  if (!(is_a_potential_path)) return(out)
+  if (path == "/dev/null") return(NULL)
+  ## After all this.. this will return variable "path" (could be single length character or NULL)
+  return(out)
 }
 
 preprocess_snps <- function(gr) {
