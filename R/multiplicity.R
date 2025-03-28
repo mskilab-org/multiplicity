@@ -188,16 +188,18 @@ multiplicity <- function(somatic_snv = NULL,
     stop("sex not provided and could not be inferred from provided inputs.")
   }
 
-
-  ploidy <- if (!is.null(ploidy)) {
-    ploidy
-  } else {
-    gg$meta$ploidy
+  ## Added trycatch to provide a slightly more helpful error message.
+  if (is.null(ploidy)) {
+    ploidy = tryCatch(
+      base::get("ploidy", gg$meta), 
+      error = function(e) stop("ploidy not provided, and not found in gGraph 'meta' field, you must provide a ploidy solution")
+    )
   }
-  purity <- if (!is.null(purity)) {
-    purity
-  } else if (!is.null(gg$meta$purity)) {
-    gg$meta$purity
+  if (is.null(purity)) {
+    purity = tryCatch(
+      base::get("purity", gg$meta), 
+      error = function(e) stop("purity not provided, and not found in gGraph 'meta' field, you must provide a purity solution")
+    )
   }
 
   jab <- dt2gr(gr2dt(gg$nodes$gr)[seqnames == 23, seqnames := "X"])
