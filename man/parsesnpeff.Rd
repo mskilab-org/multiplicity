@@ -6,7 +6,7 @@
 \usage{
 parsesnpeff(
   vcf,
-  snpeff_path = "~/modules/SnpEff/source/snpEff",
+  snpeff_path = system.file("extdata", "snpeff_scripts", package = "multiplicity"),
   tumor_id = NULL,
   normal_id = NULL,
   filterpass = TRUE,
@@ -29,25 +29,31 @@ parsesnpeff(
 
 \item{normal_id}{Normal name as annotated in the VCF}
 
-\item{filterpass}{process only FILTER == PASS variants?}
+\item{filterpass}{lorem impsum}
 
-\item{coding_alt_only}{process only coding alterations?}
+\item{coding_alt_only}{lorem impsum}
 
-\item{geno}{todo}
+\item{geno}{lorem impsum}
 
-\item{gr}{todo}
+\item{gr}{lorem impsum}
 
 \item{keepfile}{todo}
 
-\item{altpipe}{parsesnpeff via khtools::grok_vcf?}
+\item{altpipe}{lorem impsum}
 
-\item{debug}{debug function?}
+\item{debug}{lorem impsum}
 
 \item{verbose}{verbose output?}
 
 \item{bcftools}{Path to bcftools toolkit}
+
+\item{pad}{Exposed argument to skitools::ra.overlaps()}
+
+\item{kepefile}{lorem impsum}
 }
 \value{
+GRangesList of breakpoint pairs with junctions that overlap removed
+
 GRangesList of breakpoint pairs with junctions that overlap removed
 }
 \description{
