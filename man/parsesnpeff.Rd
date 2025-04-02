@@ -17,7 +17,7 @@ parsesnpeff(
   altpipe = FALSE,
   debug = FALSE,
   verbose = FALSE,
-  bcftools = "bcftools"
+  bcftools = "/gpfs/data/imielinskilab/Software/miniforge3/envs/vcftools/bin/bcftools"
 )
 }
 \arguments{
