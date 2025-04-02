@@ -15,7 +15,7 @@ multiplicity(
   mask = NULL,
   inferred_sex = NA,
   read_size = 151,
-  snpeff_path,
+  snpeff_path = system.file("extdata", "snpeff_scripts", package = "multiplicity"),
   tumor_name = NULL,
   normal_name = NULL,
   filterpass = FALSE,

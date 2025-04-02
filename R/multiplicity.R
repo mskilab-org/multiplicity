@@ -40,7 +40,7 @@ multiplicity <- function(somatic_snv = NULL,
                          mask = NULL,
                          inferred_sex = NA,
                          read_size = 151,
-                         snpeff_path,
+                         snpeff_path = system.file("extdata", "snpeff_scripts", package = "multiplicity"),
                          tumor_name = NULL,
                          normal_name = NULL,
                          filterpass = FALSE,
@@ -61,14 +61,63 @@ multiplicity <- function(somatic_snv = NULL,
   if (is.null(somatic_snv) & is.null(germline_snv) & is.null(het_pileups_wgs)) {
     stop("Somatic VCF, Germline VCF, and/or HetSNPs file must be provided.")
   }
+  
+  gg = NULL
+  cn.gr = NULL
+  jab = NULL
+  rm(list = c("jab", "cn.gr", "cbs.vector"))
+  is_jabba_character = is.character(jabba_rds)
+  is_jabba_len_one = NROW(jabba_rds) == 1
+  is_jabba_null = is.null(jabba_rds) || identical(jabba_rds, base::nullfile())
+  is_jabba_na = is_jabba_len_one && (is.na(jabba_rds) || identical(jabba_rds, "NA"))
+  is_jabba_existent = is_jabba_character && is_jabba_len_one && file.exists(jabba_rds)
+  is_jabba_nonexistent = is_jabba_character && is_jabba_len_one && !file.exists(jabba_rds)
+  is_jabba_invalid = is_jabba_character && !is_jabba_len_one
+  if (!is_jabba_null && !is_jabba_na) {
+    if (is_jabba_nonexistent) {
+      stop("Path to JaBbA provided to 'jabba_rds' does not exist.")
+    } else if (is_jabba_invalid) {
+      stop("Path to jabba provided to 'jabba_rds' is a character but not length one")
+    }
+    is_jabba_rds = is_jabba_existent && grepl("rds$", jabba_rds)
+    is_jabba_other = is_jabba_existent && !is_jabba_rds
+    is_jabba_list = (
+      is.list(jabba_rds) 
+      && all(c("segstats", "junctions", "gtrack", "purity", "ploidy") %in% names(jabba_rds))
+    )
+    is_jabba_ggraph = inherits(jabba_rds, "gGraph")
+    if (is_jabba_rds || is_jabba_list) {
+      gg = gGnome::gG(jabba = jabba_rds) 
+    } else if (is_jabba_other) {
+      stop("Path to jabba provided to 'jabba_rds' is unsupported file type")
+    } else if (is_jabba_ggraph) {
+      gg = jabba_rds
+    }
+    jab <- dt2gr(gr2dt(gg$nodes$gr)[seqnames == 23, seqnames := "X"][seqnames == 24, seqnames := "Y"])
+    GenomeInfoDb::seqlevelsStyle(jab) = "NCBI"
+    cn.gr <- jab[as.logical(strand(jab) == "+")]
+  }
+  is_jabba_obj_present = !is.null(gg) && !is.null(jab) && !is.null(cn.gr)
 
-  gg <- gG(jabba = jabba_rds)
+  ## Added trycatch to provide a slightly more helpful error message.
+  if (is.null(ploidy)) {
+    ploidy = tryCatch(
+      base::get("ploidy", gg$meta), 
+      error = function(e) stop("ploidy not provided, and not found in gGraph 'meta' field, you must provide a ploidy solution")
+    )
+  }
+  if (is.null(purity)) {
+    purity = tryCatch(
+      base::get("purity", gg$meta), 
+      error = function(e) stop("purity not provided, and not found in gGraph 'meta' field, you must provide a purity solution")
+    )
+  }
 
   read_size <- as.numeric(read_size)
 
   is_cov_character = is.character(tumor_dryclean)
   is_cov_len_one = NROW(tumor_dryclean) == 1
-  is_cov_null = is.null(tumor_dryclean)
+  is_cov_null = is.null(tumor_dryclean) || identical(tumor_dryclean, base::nullfile())
   is_cov_na = is_cov_len_one && (is.na(tumor_dryclean) || identical(tumor_dryclean, "NA"))
   is_cov_existent = is_cov_character && is_cov_len_one && file.exists(tumor_dryclean)
   is_cov_nonexistent = is_cov_character && is_cov_len_one && !file.exists(tumor_dryclean)
@@ -103,18 +152,40 @@ multiplicity <- function(somatic_snv = NULL,
     mcols(dryclean.cov)$bincov <- cov.vector
     mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
   }
+  is_cov_obj_present = !is.null(dryclean.cov)
 
   # CBS WILL OVERRIDE DRYCLEAN INPUTS
   # CBS reduces variance relative to dryclean rescaling alone
   is_seg_character = is.character(tumor_cbs)
   is_seg_len_one = NROW(tumor_cbs) == 1
-  is_seg_null = is.null(tumor_cbs)
+  is_seg_null = is.null(tumor_cbs) || identical(tumor_cbs, base::nullfile())
   is_seg_na = is_seg_len_one && (is.na(tumor_cbs) || identical(tumor_cbs, "NA"))
   is_seg_existent = is_seg_character && is_seg_len_one && file.exists(tumor_cbs)
   is_seg_nonexistent = is_seg_character && is_seg_len_one && !file.exists(tumor_cbs)
   is_seg_invalid = is_seg_character && !is_seg_len_one
   cov.cbs = NULL
-  if (!is_seg_null && !is_seg_na) {
+  cbs.vector = NULL
+  cn.cbs = NULL
+
+  is_both_jabba_and_cov_present = is_jabba_obj_present && is_cov_obj_present
+
+  ## FIXME:
+  ## If jabba and binned coverage present, get segstats, but following
+  ## the same logic as below. Would want to rename variable names for clarity.
+  if (is_both_jabba_and_cov_present) {
+    message("Pivoting to using JaBbA segmentation and coverage to get segment level mean coverage.")
+    cbs.cov = JaBbA:::segstats(cn.gr, dryclean.cov, field = "bincov")
+    cbs.vector = cbs.cov$mean
+  }
+
+  ## FIXME: The below would never be possible if jabba is a default and dryclean is provided..
+  ## The assumption is that if jabba is a default + dryclean are provided, we always recompute segstats on jabba.
+  ## But we may want to relax that assumption and allow jabba_rds default to be NULL
+  ## It is possible to get to this guard if jabba + cbs with proper seg.mean are provided.
+  if (
+    (!is_both_jabba_and_cov_present)
+    && (!is_seg_null && !is_seg_na)
+  ) {
     if (is_seg_nonexistent) {
       stop("Path to segmentation provided to 'tumor_cbs' does not exist")
     } else if (is_seg_invalid) {
@@ -138,18 +209,58 @@ multiplicity <- function(somatic_snv = NULL,
     if (!is_seg_granges) {
       stop("Provided segmentation must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format")
     }
-    cbs.vector <- mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
+    seg_mean_val = get0("seg.mean", as.environment(mcols(cbs.cov)), ifnotfound = NULL)
+    is_seg_mean_found = !is.null(seg_mean_val) 
+    
+    if (is_seg_mean_found) {
+      cbs.vector = seg_mean_val
+      if (verbose) message("Assuming segmentation seg.mean is log-scaled, converting to linear")
+      cbs.vector <- exp(cbs.vector)
+    }
+    
+    ## FIXME: This error would never happen because binned coverage would always have to be present here.
+    ## See guard.
+    if (!is_seg_mean_found && !is_cov_obj_present) { 
+      stop("No seg.mean values available in segmentation output, please provide binned coverage to recompute")
+    } else if (!is_seg_mean_found && is_cov_obj_present) {
+      message("seg.mean not found, pivoting to using JaBbA segmentation on cbs coverage")
+      cbs.cov = JaBbA:::segstats(cbs.cov, dryclean.cov, field = "bincov")
+      cbs.vector = cbs.cov$mean
+    }
+
+    # Can do rel2abs to get CN if only CBS and coverage provided and no JaBbA
+    # Note we are inside a guard where jabba + cov were not provided.
+    # But we need to account for if jabba + segments were provided, but not coverage
+    if (!is_jabba_obj_present) {
+      mcols(cbs.cov)$cov_val = cbs.vector
+      cbs.cn = skitools::rel2abs(cbs.cov, "cov_val", purity = purity, ploidy = ploidy)
+      mcols(cbs.cov)$cov_val = NULL
+      jab = cbs.cov
+      cn.gr = cbs.cov
+      mcols(jab)$cn = cbs.cn
+      mcols(cn.gr)$cn = cbs.cn
+    }
+
+
+    # cbs.vector <- mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
+    
+  }
+
+  is_seg_obj_present = !is.null(cbs.cov) && !is.null(cbs.vector)
+  if (is_seg_obj_present) {
     mcols(cbs.cov) <- NULL
-    if (verbose) message("Assuming segmentation seg.mean is log-scaled, converting to linear")
-    mcols(cbs.cov)$bincov <- exp(cbs.vector)
+    mcols(cbs.cov)$bincov = cbs.vector
     cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>% gr.val(cbs.cov, "bincov")
     cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
     mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
-    if (exists("dryclean.cov")) {
+    if (is_cov_obj_present) {
       message("Provided segmentation superseding drycleaned binned coverage")
     }
     dryclean.cov = cbs.cov
+    
   }
+  
+  
 
 
   if (!(is.na(mask) || is.null(mask))) {
@@ -160,7 +271,8 @@ multiplicity <- function(somatic_snv = NULL,
     ## constitutional_cn assignment
     ## c_subj == 1 for major allele
     ## c_subj == 1 for autosomes and X chromosome in females, 0 for X and Y in males
-    ncn.x <- gg$nodes$dt[
+    # ncn.x <- gg$nodes$dt[
+    ncn.x <- gr2dt(cn.gr)[
       (seqnames == "X" |
         seqnames == "chrX" |
         seqnames == "23" |
@@ -188,22 +300,9 @@ multiplicity <- function(somatic_snv = NULL,
     stop("sex not provided and could not be inferred from provided inputs.")
   }
 
-  ## Added trycatch to provide a slightly more helpful error message.
-  if (is.null(ploidy)) {
-    ploidy = tryCatch(
-      base::get("ploidy", gg$meta), 
-      error = function(e) stop("ploidy not provided, and not found in gGraph 'meta' field, you must provide a ploidy solution")
-    )
-  }
-  if (is.null(purity)) {
-    purity = tryCatch(
-      base::get("purity", gg$meta), 
-      error = function(e) stop("purity not provided, and not found in gGraph 'meta' field, you must provide a purity solution")
-    )
-  }
+  
 
-  jab <- dt2gr(gr2dt(gg$nodes$gr)[seqnames == 23, seqnames := "X"])
-  cn.gr <- jab[as.logical(strand(jab) == "+")]
+  
 
   somatic.variants <- NULL
   germline.variants <- NULL
@@ -611,7 +710,7 @@ transform_hets <- function(hets,
 #' @export
 parsesnpeff = function (
   vcf,
-  snpeff_path = "~/modules/SnpEff/source/snpEff",
+  snpeff_path = system.file("extdata", "snpeff_scripts", package = "multiplicity"),
   tumor_id = NULL,
   normal_id = NULL,
   filterpass = TRUE,
@@ -622,7 +721,7 @@ parsesnpeff = function (
   altpipe = FALSE, 
   debug = FALSE,
   verbose = FALSE,
-  bcftools = "/gpfs/data/imielinskilab/Software/miniforge3/envs/vcftools/bin/bcftools" # FIXME: hardcoded for now.
+  bcftools = "bcftools" # FIXME: hardcoded for now.
   ) {
   if (debug)
     browser()
@@ -630,8 +729,9 @@ parsesnpeff = function (
   if (!keepfile)
     on.exit(unlink(tmp.path))
   try2({
-    catcmd = if (grepl("(.gz)$", vcf)) "zcat" else "cat"
-    onepline = paste0(snpeff_path, "/scripts/vcfEffOnePerLine.pl")
+    # catcmd = if (grepl("(.gz)$", vcf)) "zcat" else "cat"
+    catcmd = paste(bcftools, "view -Ov")
+    onepline = paste0(snpeff_path, "/vcfEffOnePerLine.pl")
     if (verbose)(message(paste0("applying SnpSift to VCF: ", vcf)))
     if (coding_alt_only) {
       if(verbose)(message("Coding alterations only."))
@@ -643,7 +743,7 @@ parsesnpeff = function (
         cmd = sprintf(paste(catcmd, "%s | %s | %s | %s view -i 'FILTER==\"PASS\"' | bgzip -c > %s"), vcf, onepline, filt, bcftools, tmp.path)  
       } else {
         if(verbose) (message("Coding alterations only."))
-          cmd = sprintf("cat %s | %s | %s | bgzip -c > %s", vcf, onepline, filt, tmp.path)
+          cmd = sprintf("%s %s | %s | %s | bgzip -c > %s", catcmd, vcf, onepline, filt, tmp.path)
       }
     } else {
       filt = ""
