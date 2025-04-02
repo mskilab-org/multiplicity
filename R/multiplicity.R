@@ -167,12 +167,12 @@ multiplicity <- function(somatic_snv = NULL,
   cbs.vector = NULL
   cn.cbs = NULL
 
-  is_jabba_and_cov_present = is_jabba_obj_present && is_cov_obj_present
+  is_both_jabba_and_cov_present = is_jabba_obj_present && is_cov_obj_present
 
   ## FIXME:
   ## If jabba and binned coverage present, get segstats, but following
   ## the same logic as below. Would want to rename variable names for clarity.
-  if (is_jabba_and_cov_present) {
+  if (is_both_jabba_and_cov_present) {
     message("Pivoting to using JaBbA segmentation and coverage to get segment level mean coverage.")
     cbs.cov = JaBbA:::segstats(cn.gr, dryclean.cov, field = "bincov")
     cbs.vector = cbs.cov$mean
@@ -181,8 +181,9 @@ multiplicity <- function(somatic_snv = NULL,
   ## FIXME: The below would never be possible if jabba is a default and dryclean is provided..
   ## The assumption is that if jabba is a default + dryclean are provided, we always recompute segstats on jabba.
   ## But we may want to relax that assumption and allow jabba_rds default to be NULL
+  ## It is possible to get to this guard if jabba + cbs with proper seg.mean are provided.
   if (
-    (!is_jabba_and_cov_present)
+    (!is_both_jabba_and_cov_present)
     && (!is_seg_null && !is_seg_na)
   ) {
     if (is_seg_nonexistent) {
@@ -217,24 +218,28 @@ multiplicity <- function(somatic_snv = NULL,
       cbs.vector <- exp(cbs.vector)
     }
     
-    
-    if (!is_seg_mean_found && is_cov_obj_present) { 
+    ## FIXME: This error would never happen because binned coverage would always have to be present here.
+    ## See guard.
+    if (!is_seg_mean_found && !is_cov_obj_present) { 
       stop("No seg.mean values available in segmentation output, please provide binned coverage to recompute")
     } else if (!is_seg_mean_found && is_cov_obj_present) {
-      message("seg.mean not found, pivoting to using JaBbA segmentation")
+      message("seg.mean not found, pivoting to using JaBbA segmentation on cbs coverage")
       cbs.cov = JaBbA:::segstats(cbs.cov, dryclean.cov, field = "bincov")
       cbs.vector = cbs.cov$mean
     }
 
-    # Can do rel2abs later to get CN if only CBS and coverage provided and no JaBbA
-    # Note we are inside a guard where no jabba was provided.
-    mcols(cbs.cov)$cov_val = cbs.vector
-    cbs.cn = skitools::rel2abs(cbs.cov, "cov_val", purity = purity, ploidy = ploidy)
-    mcols(cbs.cov)$cov_val = NULL
-    jab = cbs.cov
-    cn.gr = cbs.cov
-    mcols(jab)$cn = cbs.cn
-    mcols(cn.gr)$cn = cbs.cn
+    # Can do rel2abs to get CN if only CBS and coverage provided and no JaBbA
+    # Note we are inside a guard where jabba + cov were not provided.
+    # But we need to account for if jabba + segments were provided, but not coverage
+    if (!is_jabba_obj_present) {
+      mcols(cbs.cov)$cov_val = cbs.vector
+      cbs.cn = skitools::rel2abs(cbs.cov, "cov_val", purity = purity, ploidy = ploidy)
+      mcols(cbs.cov)$cov_val = NULL
+      jab = cbs.cov
+      cn.gr = cbs.cov
+      mcols(jab)$cn = cbs.cn
+      mcols(cn.gr)$cn = cbs.cn
+    }
 
 
     # cbs.vector <- mcols(cbs.cov)[names(mcols(cbs.cov)) %in% "seg.mean"][, 1]
