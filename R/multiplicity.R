@@ -65,7 +65,6 @@ multiplicity <- function(somatic_snv = NULL,
   gg = NULL
   cn.gr = NULL
   jab = NULL
-  rm(list = c("jab", "cn.gr", "cbs.vector"))
   is_jabba_character = is.character(jabba_rds)
   is_jabba_len_one = NROW(jabba_rds) == 1
   is_jabba_null = is.null(jabba_rds) || identical(jabba_rds, base::nullfile())
