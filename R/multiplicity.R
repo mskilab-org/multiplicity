@@ -162,7 +162,7 @@ multiplicity <- function(somatic_snv = NULL,
   is_seg_existent = is_seg_character && is_seg_len_one && file.exists(tumor_cbs)
   is_seg_nonexistent = is_seg_character && is_seg_len_one && !file.exists(tumor_cbs)
   is_seg_invalid = is_seg_character && !is_seg_len_one
-  cov.cbs = NULL
+  cbs.cov = NULL
   cbs.vector = NULL
   cn.cbs = NULL
 
@@ -313,7 +313,7 @@ multiplicity <- function(somatic_snv = NULL,
 
   if (!is.na(somatic_snv) && !is.null(somatic_snv)) {
     message("Processing somatic variants.")
-
+    
     somatic.variants <- transform_snv(
       vcf = somatic_snv,
       cn_gr = cn.gr,
