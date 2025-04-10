@@ -314,7 +314,7 @@ multiplicity <- function(somatic_snv = NULL,
   if (!is.na(somatic_snv) && !is.null(somatic_snv)) {
     message("Processing somatic variants.")
     
-    somatic.variants <- transform_snv(
+    somatic_variants <- transform_snv(
       vcf = somatic_snv,
       cn_gr = cn.gr,
       snpeff_path = snpeff_path,
@@ -336,7 +336,7 @@ multiplicity <- function(somatic_snv = NULL,
 
   if (!is.na(germline_snv) && !is.null(germline_snv)) {
     message("Processing germline variants.")
-    germline.variants <- transform_snv(
+    germline_variants <- transform_snv(
       vcf = germline_snv,
       cn_gr = cn.gr,
       snpeff_path = snpeff_path,
@@ -358,7 +358,7 @@ multiplicity <- function(somatic_snv = NULL,
 
   if (!is.na(het_pileups_wgs) && !is.null(het_pileups_wgs)) {
     message("Processing heterozygous SNPs.")
-    het.pileups <- transform_hets(
+    het_pileups <- transform_hets(
       hets = het_pileups_wgs,
       cn_gr = cn.gr,
       dryclean.cov = dryclean.cov,
@@ -372,7 +372,11 @@ multiplicity <- function(somatic_snv = NULL,
     )
   }
 
-  return(list(somatic.variants, germline.variants, het.pileups))
+  return(list(
+    somatic_variants = somatic_variants,
+    germline_variants = germline_variants,
+    het_pileups = het_pileups
+  ))
 }
 
 
