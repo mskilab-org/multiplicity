@@ -303,9 +303,9 @@ multiplicity <- function(somatic_snv = NULL,
 
   
 
-  somatic.variants <- NULL
-  germline.variants <- NULL
-  het.pileups <- NULL
+  somatic_variants <- NULL
+  germline_variants <- NULL
+  het_pileups <- NULL
 
   if (verbose) {
     message("succesfully read in JaBbA graph!")
