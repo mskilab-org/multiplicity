@@ -1,5 +1,5 @@
 library(testthat)
-library(multiplicity)
+#library(multiplicity)
 
 context("multiplicity function tests")
 
@@ -106,8 +106,6 @@ test_that("multiplicity test of somatic variants transformation with NO rescalin
   expect_equal(round(variant$total_snv_copies, 3), 1.84)
 })
 
-round(variant$altered_copies, 3)
-round(variant$total_snv_copies, 3)
 
 test_that("multiplicity test of hetsnps transformation with CBS rescaling; recommended solution for running", {
   result4 <- suppressWarnings(multiplicity(

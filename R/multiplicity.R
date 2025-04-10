@@ -208,7 +208,7 @@ multiplicity <- function(somatic_snv = NULL,
     if (!is_seg_granges) {
       stop("Provided segmentation must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format")
     }
-    seg_mean_val = get0("seg.mean", as.environment(mcols(cbs.cov)), ifnotfound = NULL)
+    seg_mean_val = mcols(cbs.cov)[["seg.mean"]]
     is_seg_mean_found = !is.null(seg_mean_val) 
     
     if (is_seg_mean_found) {
