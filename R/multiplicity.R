@@ -730,12 +730,36 @@ parsesnpeff = function (
   try2({
     # catcmd = if (grepl("(.gz)$", vcf)) "zcat" else "cat"
     catcmd = paste(bcftools, "view -Ov")
-    onepline = paste0(snpeff_path, "/vcfEffOnePerLine.pl")
+    ## Redundant logic is for backwards compatibility with workflows
+    ## in which a snpeff path is already provided.
+    ## Fallback option encoded here in case it doesn't.
+    onepline_path1 = paste0(snpeff_path, "/vcfEffOnePerLine.pl")
+    onepline_path2 = paste0(snpeff_path, "/scripts/vcfEffOnePerLine.pl")
+    onepline_path3 = system.file("extdata", "snpeff_scripts", "vcfEffOnePerLine.pl", package = "multiplicity")
+    onepline = onepline_path3
+    is_path1_same_as_path3 = identical(onepline_path1, onepline_path3)
+    if (!is_path1_same_as_path3 && file.exists(onepline_path1)) {
+      onepline = onepline_path1
+    } else if (!is_path1_same_as_path3 && file.exists(onepline_path2)) {
+      onepline = onepline_path2
+    }
+    # onepline = paste0(snpeff_path, "/vcfEffOnePerLine.pl")
+    snpsift_path1 = paste0(snpeff_path, "/SnpSift.jar")
+    snpsift_path2 = paste0(snpeff_path, "/scripts/SnpSift.jar")
+    snpsift_path3 = system.file("extdata", "snpeff_scripts", "SnpSift.jar", package = "multiplicity")
+    is_path1_same_as_path3 = identical(snpsift_path1, snpsift_path3)
+    snpsift = snpsift_path3
+    if (!is_path1_same_as_path3 && file.exists(snpsift_path1)) {
+      snpsift = snpsift_path1
+    } else if (!is_path1_same_as_path3 && file.exists(snpsift_path2)) {
+      snpsift = snpsift_path2
+    }
     if (verbose)(message(paste0("applying SnpSift to VCF: ", vcf)))
     if (coding_alt_only) {
       if(verbose)(message("Coding alterations only."))
       filt = paste0("java -Xmx20m -Xms20m -XX:ParallelGCThreads=1 -jar ",
-        snpeff_path, "/SnpSift.jar ",
+        # snpeff_path, "/SnpSift.jar ",
+        snpsift, " ",
         "filter \"( ANN =~ 'chromosome_number_variation|exon_loss_variant|rare_amino_acid|stop_lost|transcript_ablation|coding_sequence|regulatory_region_ablation|TFBS|exon_loss|truncation|start_lost|missense|splice|stop_gained|frame' )\"")
       if (filterpass) {
         if(verbose) (message("Coding alterations only and FILTER == PASS variants only."))
