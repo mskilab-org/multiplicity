@@ -1,18 +1,17 @@
 
 ```
 
-
- .d8888b.  888b    888 888     888          888 d8b          d8b 888             
-d88P  Y88b 8888b   888 888     888          888 Y8P          Y8P 888             
-Y88b.      88888b  888 888     888          888                  888             
- "Y888b.   888Y88b 888 Y88b   d88P 88888b.  888 888  .d8888b 888 888888 888  888 
-    "Y88b. 888 Y88b888  Y88b d88P  888 "88b 888 888 d88P"    888 888    888  888 
-      "888 888  Y88888   Y88o88P   888  888 888 888 888      888 888    888  888 
-Y88b  d88P 888   Y8888    Y888P    888 d88P 888 888 Y88b.    888 Y88b.  Y88b 888 
- "Y8888P"  888    Y888     Y8P     88888P"  888 888  "Y8888P 888  "Y888  "Y88888 
-                                   888                                       888 
-                                   888                                  Y8b d88P 
-                                   888                                   "Y88P"  
+                       888 888    d8b          888 d8b          d8b 888             
+                       888 888    Y8P          888 Y8P          Y8P 888             
+                       888 888                 888                  888             
+88888b.d88b.  888  888 888 888888 888 88888b.  888 888  .d8888b 888 888888 888  888 
+888 "888 "88b 888  888 888 888    888 888 "88b 888 888 d88P"    888 888    888  888 
+888  888  888 888  888 888 888    888 888  888 888 888 888      888 888    888  888 
+888  888  888 Y88b 888 888 Y88b.  888 888 d88P 888 888 Y88b.    888 Y88b.  Y88b 888 
+888  888  888  "Y88888 888  "Y888 888 88888P"  888 888  "Y8888P 888  "Y888  "Y88888 
+                                      888                                       888 
+                                      888                                  Y8b d88P 
+                                      888                                   "Y88P"  
 
 ```
 ## <font color=black> Introduction </font>
@@ -25,7 +24,7 @@ al.](https://www.cell.com/cell/fulltext/S0092-8674(20)30997-1). Please see
 Supplementary Note 2 and STAR Methods, respectively, in these publications for
 full details on this derivation. 
 
-SNVplicity is an R library to convert counts from mutation-caller derived .vcfs
+`multiplicity` is an R library to convert counts from mutation-caller derived .vcfs
 to total copies given known purity, ploidy, and consitutional discerned copy
 number as ideally determined by [JaBbA](https://github.com/mskilab-org/JaBbA).
 
