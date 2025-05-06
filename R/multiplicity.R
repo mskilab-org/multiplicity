@@ -264,7 +264,7 @@ multiplicity <- function(somatic_snv = NULL,
 	dt_hist_max = dt_hist[
 		counts == max(counts, na.rm = TRUE) 
 		& breaks == max(breaks, na.rm = TRUE)
-	]
+	][1,]
 	provided_bin_width = dt_hist_max$breaks
 	bin_width = provided_bin_width
 	if (!is_bin_width_empty) message("Overriding bin_width with inferred mode of provided coverage bin width: ", bin_width)
@@ -279,7 +279,8 @@ multiplicity <- function(somatic_snv = NULL,
     mcols(cbs.cov)$bincov = cbs.vector
     cbs.cov <- gr.tile(seqlengths(cbs.cov), bin_width) %>% gr.val(cbs.cov, "bincov")
 	ix_bincov_na = which(is.na(cbs.cov$bincov))
-	if (NROW(ix_bincov_na) > 0) cbs.cov[ix_bincov_na]$bincov <- 0
+	any_bincov_na = NROW(ix_bincov_na) > 0
+	if (any_bincov_na) cbs.cov[ix_bincov_na]$bincov <- 0
     mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
     if (is_cov_obj_present) {
       message("Provided segmentation superseding drycleaned binned coverage")
