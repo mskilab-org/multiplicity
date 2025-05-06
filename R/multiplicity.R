@@ -271,7 +271,7 @@ multiplicity <- function(somatic_snv = NULL,
   } else if (is_bin_width_default_used) {
 	bin_width = 1e3
 	if (is_no_bin_width_info) message("bin_width not provided and no coverage object present, assuming bin_width: ", bin_width)
-	if (is_bin_width_na) message("improper bin_width format provided and no coverage object present, assuming bin_width: ", bin_width)
+	if (is_bin_width_invalid_or_na) message("improper bin_width format provided and no coverage object present, assuming bin_width: ", bin_width)
   }
 
   if (is_seg_obj_present) {
