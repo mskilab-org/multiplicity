@@ -47,7 +47,8 @@ multiplicity <- function(somatic_snv = NULL,
                          tau_in_gamma = FALSE,
                          purity = NULL,
                          ploidy = NULL,
-                         verbose = FALSE) {
+                         verbose = FALSE,
+						 bin_width = NULL) {
   ### if any filepaths are /dev/null, turn them into true NULL characters.
   vars <- c("somatic_snv", "germline_snv", "het_pileups_wgs", "tumor_dryclean", "tumor_cbs")
   for (var in vars) {
@@ -246,11 +247,39 @@ multiplicity <- function(somatic_snv = NULL,
   }
 
   is_seg_obj_present = !is.null(cbs.cov) && !is.null(cbs.vector)
+
+  # determine bin width from provided dryclean cov
+  is_bin_width_empty = is.null(bin_width) || NROW(bin_width) == 0
+  is_bin_width_numeric = !is_bin_width_empty && is.numeric(bin_width)
+  is_no_bin_width_info = is_bin_width_empty && !is_cov_obj_present
+  if (!is_bin_width_numeric) {
+	bin_width = as.numeric(bin_width)
+  }
+  is_bin_width_invalid_or_na = !is_bin_width_empty && (NROW(bin_width != 1) || any(is.na(bin_width)))
+  is_bin_width_default_used = is_no_bin_width_info || is_bin_width_invalid_or_na
+  if (is_cov_obj_present) {
+	provided_widths = GenomicRanges::width(dryclean.cov)
+	bin_hist = graphics::hist(round(provided_widths / 100) * 100)
+	dt_hist = data.table(breaks = bin_hist$breaks[-1], counts = bin_hist$counts)
+	dt_hist_max = dt_hist[
+		counts == max(counts, na.rm = TRUE) 
+		& breaks == max(breaks, na.rm = TRUE)
+	]
+	provided_bin_width = dt_hist_max$breaks
+	bin_width = provided_bin_width
+	if (!is_bin_width_empty) message("Overriding bin_width with inferred mode of provided coverage bin width: ", bin_width)
+  } else if (is_bin_width_default_used) {
+	bin_width = 1e3
+	if (is_no_bin_width_info) message("bin_width not provided and no coverage object present, assuming bin_width: ", bin_width)
+	if (is_bin_width_na) message("improper bin_width format provided and no coverage object present, assuming bin_width: ", bin_width)
+  }
+
   if (is_seg_obj_present) {
     mcols(cbs.cov) <- NULL
     mcols(cbs.cov)$bincov = cbs.vector
-    cbs.cov <- gr.tile(seqlengths(cbs.cov), 1000) %>% gr.val(cbs.cov, "bincov")
-    cbs.cov[which(is.na(cbs.cov$bincov))]$bincov <- 0
+    cbs.cov <- gr.tile(seqlengths(cbs.cov), bin_width) %>% gr.val(cbs.cov, "bincov")
+	ix_bincov_na = which(is.na(cbs.cov$bincov))
+	if (NROW(ix_bincov_na) > 0) cbs.cov[ix_bincov_na]$bincov <- 0
     mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
     if (is_cov_obj_present) {
       message("Provided segmentation superseding drycleaned binned coverage")
