@@ -6,6 +6,7 @@
 snvplicity <- function(...) {
   multiplicity(...)
 }
+
 #' @name multiplicity
 #' @title Converts counts to copies.
 #'
@@ -30,300 +31,364 @@ snvplicity <- function(...) {
 #' @param verbose verbose output?
 #' @return Returns a GRanges with counts and converted copies
 #' @export
-multiplicity <- function(somatic_snv = NULL,
-             germline_snv = NULL,
-             het_pileups_wgs = NULL,
-             tumor_cbs = NULL,
-             tumor_dryclean = NULL,
-             dryclean_field,
-             jabba_rds,
-             mask = NULL,
-             inferred_sex = NA,
-             read_size = 151,
-             snpeff_path = system.file("extdata", "snpeff_scripts", package = "multiplicity"),
-             tumor_name = NULL,
-             normal_name = NULL,
-             filterpass = FALSE,
-             tau_in_gamma = FALSE,
-             purity = NULL,
-             ploidy = NULL,
-             modeltype = "unified",
-             verbose = FALSE) {
+multiplicity <- function(
+  somatic_snv = NULL,
+  germline_snv = NULL,
+  het_pileups_wgs = NULL,
+  tumor_cbs = NULL,
+  tumor_dryclean = NULL,
+  dryclean_field,
+  jabba_rds,
+  mask = NULL,
+  inferred_sex = NA,
+  read_size = 151,
+  snpeff_path = system.file("extdata", "snpeff_scripts", package = "multiplicity"),
+  tumor_name = NULL,
+  normal_name = NULL,
+  filterpass = FALSE,
+  tau_in_gamma = FALSE,
+  purity = NULL,
+  ploidy = NULL,
+  modeltype = "unified",
+  verbose = FALSE
+) {
+  preprocessed_inputs <- preprocess_multiplicity_inputs(
+    somatic_snv = somatic_snv,
+    germline_snv = germline_snv,
+    het_pileups_wgs = het_pileups_wgs,
+    tumor_cbs = tumor_cbs,
+    tumor_dryclean = tumor_dryclean,
+    dryclean_field = dryclean_field,
+    jabba_rds = jabba_rds,
+    mask = mask,
+    inferred_sex = inferred_sex,
+    read_size = read_size,
+    ploidy = ploidy,
+    purity = purity,
+    verbose = verbose
+  )
 
-              preprocessed_inputs <- preprocess_multiplicity_inputs(
-                somatic_snv = somatic_snv,
-                germline_snv = germline_snv,
-                het_pileups_wgs = het_pileups_wgs,
-                tumor_cbs = tumor_cbs,
-                tumor_dryclean = tumor_dryclean,
-                dryclean_field = dryclean_field,
-                jabba_rds = jabba_rds,
-                mask = mask,
-                inferred_sex = inferred_sex,
-                read_size = read_size,
-                ploidy = ploidy,
-                purity = purity,
-                verbose = verbose
-              )
+  somatic_variants <- NULL
+  germline_variants <- NULL
+  het_pileups <- NULL
 
-              somatic_variants <- NULL
-              germline_variants <- NULL
-              het_pileups <- NULL
+  cn.gr <- preprocessed_inputs$cn.gr
+  dryclean.cov <- preprocessed_inputs$dryclean.cov
+  inferred_sex <- preprocessed_inputs$inferred_sex
+  purity <- preprocessed_inputs$purity
+  ploidy <- preprocessed_inputs$ploidy
+  mask <- preprocessed_inputs$mask
 
-              cn.gr <- preprocessed_inputs$cn.gr
-              dryclean.cov <- preprocessed_inputs$dryclean.cov
-              inferred_sex <- preprocessed_inputs$inferred_sex
-              purity <- preprocessed_inputs$purity
-              ploidy <- preprocessed_inputs$ploidy
-              mask <- preprocessed_inputs$mask
-              browser()
+  if (modeltype == "unified") {
+    if (verbose) message("Using unified processing model.")
 
-              if (modeltype == "unified") {
-                ##### UNIFIED MODEL #####
-                if (verbose) message("Using unified processing model.")
-                
-                if (!is.na(somatic_snv_path) && !is.null(somatic_snv_path)) {
-                  if (verbose) message("Processing somatic variants (unified model using parsesnpeff).")
-                  somatic_variants <- parsesnpeff(
-                    vcf = somatic_snv,
-                    snpeff_path = snpeff_path,
-                    coding_alt_only = FALSE, # As per original commented-out code
-                    filterpass = filterpass, # Uses the main filterpass parameter
-                    tumor_id = tumor_name,
-                    normal_id = normal_name,
-                    keepfile = FALSE,
-                    altpipe = TRUE,
-                    verbose = verbose
-                  )
-                }
-                
-                if (!is.na(germline_snv_path) && !is.null(germline_snv_path)) {
-                  if (verbose) message("Processing germline variants (unified model using parsesnpeff).")
-                  germline_variants <- parsesnpeff(
-                    vcf = germline_snv,
-                    snpeff_path = snpeff_path,
-                    coding_alt_only = FALSE, # As per original commented-out code
-                    filterpass = filterpass, # Uses the main filterpass parameter
-                    tumor_id = tumor_name,
-                    normal_id = normal_name,
-                    keepfile = FALSE,
-                    altpipe = TRUE,
-                    verbose = verbose
-                  )
-                }
-                
-                if (!is.na(het_pileups_wgs) && !is.null(het_pileups_wgs)) {
-                  if (verbose) message("Processing heterozygous SNPs (unified model - basic load).")
-                  if (file.exists(het_pileups_wgs_path)) {
-                    # Assuming het_pileups_wgs_path is a file to be read by fread and converted
-                    het_data <- data.table::fread(het_pileups_wgs)
-                    if (inherits(het_data, "data.frame")) {
-                      het_pileups <- gUtils::dt2gr(het_data) # Ensure gUtils is available
-                    } else {
-                      if (verbose) message("Loaded het_pileups data is not a data.frame, cannot convert to GRanges.")
-                      het_pileups <- NULL
-                    }
-                    if (!is.null(het_pileups) && !inherits(het_pileups, "GRanges")) {
-                      warning("Failed to convert het_pileups to GRanges in unified model.")
-                      het_pileups <- NULL
-                    }
-                  } else {
-                    if (verbose) message("Het pileups file not found for unified model: ", het_pileups_wgs_path)
-                    het_pileups <- NULL
-                  }
-                }
-                
-                names(somatic_variants) <- NULL
-                names(germline_variants) <- NULL
-                names(het_pileups) <- NULL
-                
-                mcols(somatic_variants)$class <- "SOMATIC"
-                mcols(germline_variants)$class <- "GERMLINE"
-                mcols(het_pileups)$class <- "HET"
-                
-                somatic_dt <- gr2dt(somatic_variants)[, .SD[1], by = c("seqnames", "start", "end")][, c(
-                  "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
-                  intersect(c("normal.ref", "normal.alt"), names(gr2dt(somatic_variants)))
-                ), with = FALSE]
-                germline_dt <- gr2dt(germline_variants)[, .SD[1], by = c("seqnames", "start", "end")][, c(
-                  "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
-                  intersect(c("normal.ref", "normal.alt"), names(gr2dt(germline_variants)))
-                ), with = FALSE]
-                het_pileups_dt <- gr2dt(het_pileups)[, .SD[1], by = c("seqnames", "start", "end")][, .(
-                  seqnames, start, end, strand, width, class,
-                  ref = ref.count.t,
-                  alt = alt.count.t,
-                  normal.ref = if ("ref.count.n" %in% names(gr2dt(het_pileups))) ref.count.n else NA,
-                  normal.alt = if ("alt.count.n" %in% names(gr2dt(het_pileups))) alt.count.n else NA
-                )]
-                
-                variants <- rbind(somatic_dt, germline_dt, het_pileups_dt, fill = TRUE) %>% dt2gr()
-                
-                if (!is.null(mask)) {
-                  variants <- gr.val(variants, mask, "blacklisted", na.rm = TRUE) %Q%
-                    (!is.na(blacklisted)) %Q%
-                    (blacklisted == FALSE) # Filter out blacklisted variants
-                }
-                
-                unique.variants <- variants[, c("class", "ref", "alt")] %>% gr.nochr() %Q%
-                  (!seqnames %in% c("Y", "MT")) %>% unique
-                
-                if (!is.null(dryclean.cov)) {
-                  unique.variants <- gr.val(unique.variants, dryclean.cov, "avg_basecov", na.rm = TRUE)
-                  unique.variants$ref_denoised <- unique.variants$ref * unique.variants$avg_basecov / (unique.variants$ref + unique.variants$alt)
-                  unique.variants$alt_denoised <- unique.variants$alt * unique.variants$avg_basecov / (unique.variants$ref + unique.variants$alt)
-                  
-                  unique.variants$major.count <- pmax(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
-                  unique.variants$minor.count <- pmin(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
-                  fields.to.carry <- c("ref_denoised", "alt_denoised")
-                } else {
-                  unique.variants$major.count <- pmax(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
-                  unique.variants$minor.count <- pmin(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
-                }
-                
-                m <- length(unique.variants$ref + unique.variants$alt)
-                sf <- sum(unique.variants$major.count + unique.variants$minor.count, na.rm = TRUE) / m
-                unique.variants$major.count <- unique.variants$major.count / sf
-                unique.variants$minor.count <- unique.variants$minor.count / sf
-                
-                ncn.vec <- rep(2, length(unique.variants))
-                
-                if (inferred_sex == "M") {
-                  if (verbose) message("Adjusting ncn for XY")
-                  ncn.vec[as.character(seqnames(unique.variants)) %in% c("X", "chrX", "23", "chr23", "Y", "chrY", "y")] <- 1
-                }
-                
-                values(unique.variants)$minor_constitutional_cn <- ncn.vec - 1
-                unique.variants <- gr.val(unique.variants, cn.gr, "cn", na.rm = TRUE)
-                
-                tau_hat <- mean(unique.variants$cn, na.rm = TRUE)
-                tau <- if (tau_in_gamma) ploidy else tau_hat
-                alpha <- purity
-                beta <- alpha / (alpha * ploidy + 2 * (1 - alpha))
-                gamma <- 2 * (1 - alpha) / (alpha * tau + 2 * (1 - alpha))
-                
-                if (verbose) message(paste0("average total CN of loci: ", tau_hat))
-                if (verbose) message(paste0("ploidy of tumor sample: ", ploidy))
-                if (verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
-                if (verbose) message("applying transformation")
-                
-                mcols(unique.variants)$major_gamma_coeff <- NA
-                mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "SOMATIC"] <- 2
-                mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
-                mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "HET"] <- 1
-                mcols(unique.variants)$minor_gamma_coeff <- NA
-                mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "SOMATIC"] <- 0
-                mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
-                mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "HET"] <- 1
-                
-                mcols(unique.variants)$ncn.add <- ifelse(
-                  mcols(unique.variants)$major_gamma_coeff > 2,
-                  mcols(unique.variants)$major_gamma_coeff - 1,
-                  0
-                )
-                
-                mcols(unique.variants)$major_snv_copies <-
-                  (2 * unique.variants$major.count -
-                     (gamma * (unique.variants$minor_constitutional_cn + unique.variants$ncn.add))) / (2 * beta)
-                
-                mcols(unique.variants)$minor_snv_copies <-
-                  (2 * unique.variants$minor.count -
-                     (gamma * unique.variants$minor_constitutional_cn * unique.variants$minor_gamma_coeff)) / (2 * beta)
-                
-                mcols(unique.variants)$total_snv_copies <-
-                  unique.variants$major_snv_copies + unique.variants$minor_snv_copies
-                
-                unique.variants$altered_copies <- ifelse(unique.variants$alt >= unique.variants$ref,
-                  unique.variants$major_snv_copies,
-                  unique.variants$minor_snv_copies
-                )
-                unique.variants$VAF <- unique.variants$alt / (unique.variants$ref + unique.variants$alt)
-                
-                somatic_variants <- gr.val(somatic_variants, unique.variants %Q% (class == "SOMATIC"), c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
-                
-                germline_variants <- gr.val(germline_variants, unique.variants %Q% (class == "GERMLINE"), c(fields.to.carry, "cn",
-                                                                                                      "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
-                
-                het_pileups <- gr.val(het_pileups, unique.variants %Q% (class == "HET"), c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
-                
-              } else if (modeltype == "separate") {
-                
-                if (verbose) message("Using separate processing model.")
-                
-                if (!is.na(somatic_snv_path) && !is.null(somatic_snv_path)) {
+    if (!is.na(somatic_snv) && !is.null(somatic_snv)) {
+      if (verbose) message("Processing somatic variants (unified model using parsesnpeff).")
+      somatic_variants <- parsesnpeff(
+        vcf = somatic_snv,
+        snpeff_path = snpeff_path,
+        coding_alt_only = FALSE,
+        filterpass = filterpass,
+        tumor_id = tumor_name,
+        normal_id = normal_name,
+        keepfile = FALSE,
+        altpipe = TRUE,
+        verbose = verbose
+      )
+    }
 
-                  if (verbose) message("Processing somatic variants (separate model using transform_snv).")
-                  
-                  somatic_variants <- transform_snv(
-                    vcf = somatic_snv,
-                    cn_gr = cn.gr,
-                    snpeff_path = snpeff_path,
-                    dryclean.cov = dryclean.cov,
-                    basecov_field = "avg_basecov",
-                    inferred_sex = inferred_sex,
-                    tumor_id = tumor_name,
-                    normal_id = normal_name,
-                    purity = purity,
-                    ploidy = ploidy,
-                    filterpass = filterpass, # Uses the main filterpass parameter
-                    verbose = verbose,
-                    tau_in_gamma = tau_in_gamma,
-                    mask = mask,
-                    major_gamma_coeff = 2, # As per original active code
-                    minor_gamma_coeff = 0  # As per original active code
-                  )
-                }
-                
-                if (!is.na(germline_snv_path) && !is.null(germline_snv_path)) {
+    if (!is.na(germline_snv) && !is.null(germline_snv)) {
+      if (verbose) message("Processing germline variants (unified model using parsesnpeff).")
+      germline_variants <- parsesnpeff(
+        vcf = germline_snv,
+        snpeff_path = snpeff_path,
+        coding_alt_only = FALSE,
+        filterpass = filterpass,
+        tumor_id = tumor_name,
+        normal_id = normal_name,
+        keepfile = FALSE,
+        altpipe = TRUE,
+        verbose = verbose
+      )
+    }
 
-                  if (verbose) message("Processing germline variants (separate model using transform_snv).")
+    if (!is.na(het_pileups_wgs) && !is.null(het_pileups_wgs)) {
+      if (verbose) message("Processing heterozygous SNPs (unified model - basic load).")
+      if (file.exists(het_pileups_wgs)) {
+        het_data <- data.table::fread(het_pileups_wgs)
+        if (inherits(het_data, "data.frame")) {
+          het_pileups <- gUtils::dt2gr(het_data)
+        } else {
+          if (verbose) message("Loaded het_pileups data is not a data.frame, cannot convert to GRanges.")
+          het_pileups <- NULL
+        }
+        if (!is.null(het_pileups) && !inherits(het_pileups, "GRanges")) {
+          warning("Failed to convert het_pileups to GRanges in unified model.")
+          het_pileups <- NULL
+        }
+      } else {
+        if (verbose) message("Het pileups file not found for unified model: ", het_pileups_wgs)
+        het_pileups <- NULL
+      }
+    }
 
-                  germline_variants <- transform_snv(
-                    vcf = germline_snv,
-                    cn_gr = cn.gr,
-                    snpeff_path = snpeff_path,
-                    dryclean.cov = dryclean.cov,
-                    basecov_field = "avg_basecov",
-                    inferred_sex = inferred_sex,
-                    tumor_id = tumor_name,
-                    normal_id = normal_name,
-                    purity = purity,
-                    ploidy = ploidy,
-                    mask = mask,
-                    filterpass = TRUE, # Hardcoded TRUE as per original active code for germline
-                    verbose = verbose,
-                    tau_in_gamma = tau_in_gamma,
-                    major_gamma_coeff = 1, # As per original active code
-                    minor_gamma_coeff = 1  # As per original active code
-                  )
-                }
-                
-                if (!is.na(het_pileups_wgs_path) && !is.null(het_pileups_wgs_path)) {
+    results <- transform_unified_model(
+      somatic_variants = somatic_variants,
+      germline_variants = germline_variants,
+      het_pileups = het_pileups,
+      dryclean.cov = dryclean.cov,
+      cn.gr = cn.gr,
+      inferred_sex = inferred_sex,
+      purity = purity,
+      ploidy = ploidy,
+      verbose = verbose,
+      tau_in_gamma = tau_in_gamma,
+      mask = mask
+    )
 
-                  if (verbose) message("Processing heterozygous SNPs (separate model using transform_hets).")
+    return(results)
+    
+  } else if (modeltype == "separate") {
+    if (verbose) message("Using separate processing model.")
 
-                  het_pileups <- transform_hets(
-                    hets = het_pileups_wgs,
-                    cn_gr = cn.gr,
-                    dryclean.cov = dryclean.cov,
-                    basecov_field = "avg_basecov",
-                    inferred_sex = inferred_sex,
-                    purity = purity,
-                    ploidy = ploidy,
-                    verbose = verbose,
-                    tau_in_gamma = tau_in_gamma,
-                    mask = mask
-                  )
-                }
-              } else {
-                stop(paste0("Invalid model_type specified: '", model_type, "'. Please choose 'unified' or 'separate'."))
-              }
+    if (!is.na(somatic_snv) && !is.null(somatic_snv)) {
+      if (verbose) message("Processing somatic variants (separate model using transform_snv).")
+      somatic_variants <- transform_snv(
+        vcf = somatic_snv,
+        cn_gr = cn.gr,
+        snpeff_path = snpeff_path,
+        dryclean.cov = dryclean.cov,
+        basecov_field = "avg_basecov",
+        inferred_sex = inferred_sex,
+        tumor_id = tumor_name,
+        normal_id = normal_name,
+        purity = purity,
+        ploidy = ploidy,
+        filterpass = filterpass,
+        verbose = verbose,
+        tau_in_gamma = tau_in_gamma,
+        mask = mask,
+        major_gamma_coeff = 2,
+        minor_gamma_coeff = 0
+      )
+    }
 
-              return(list(
-                somatic_variants = somatic_variants,
-                germline_variants = germline_variants,
-                het_pileups = het_pileups
-              ))
+    if (!is.na(germline_snv) && !is.null(germline_snv)) {
+      if (verbose) message("Processing germline variants (separate model using transform_snv).")
+      germline_variants <- transform_snv(
+        vcf = germline_snv,
+        cn_gr = cn.gr,
+        snpeff_path = snpeff_path,
+        dryclean.cov = dryclean.cov,
+        basecov_field = "avg_basecov",
+        inferred_sex = inferred_sex,
+        tumor_id = tumor_name,
+        normal_id = normal_name,
+        purity = purity,
+        ploidy = ploidy,
+        mask = mask,
+        filterpass = TRUE,
+        verbose = verbose,
+        tau_in_gamma = tau_in_gamma,
+        major_gamma_coeff = 1,
+        minor_gamma_coeff = 1
+      )
+    }
+
+    if (!is.na(het_pileups_wgs) && !is.null(het_pileups_wgs)) {
+      if (verbose) message("Processing heterozygous SNPs (separate model using transform_hets).")
+      het_pileups <- transform_hets(
+        hets = het_pileups_wgs,
+        cn_gr = cn.gr,
+        dryclean.cov = dryclean.cov,
+        basecov_field = "avg_basecov",
+        inferred_sex = inferred_sex,
+        purity = purity,
+        ploidy = ploidy,
+        verbose = verbose,
+        tau_in_gamma = tau_in_gamma,
+        mask = mask
+      )
+    }
+
+    return(list(
+      somatic_variants = somatic_variants,
+      germline_variants = germline_variants,
+      het_pileups = het_pileups
+    ))
+  } else {
+    stop(paste0("Invalid model_type specified: '", modeltype, "'. Please choose 'unified' or 'separate'."))
+  }
+}
+
+transform_unified_model <- function(
+  somatic_variants,
+  germline_variants,
+  het_pileups,
+  dryclean.cov = NULL,
+  cn.gr,
+  inferred_sex,
+  purity,
+  ploidy,
+  verbose = FALSE,
+  tau_in_gamma = FALSE,
+  mask = NULL
+) {
+  # Remove names from GRanges objects
+  names(somatic_variants) <- NULL
+  names(germline_variants) <- NULL
+  names(het_pileups) <- NULL
+  
+  # Label classes
+  mcols(somatic_variants)$class <- "SOMATIC"
+  mcols(germline_variants)$class <- "GERMLINE"
+  mcols(het_pileups)$class <- "HET"
+  
+  # Convert GRanges to data.table (ensure gr2dt is available)
+  somatic_dt <- gr2dt(somatic_variants)[, .SD[1], by = c("seqnames", "start", "end")]
+  somatic_dt <- somatic_dt[, c(
+    "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
+    intersect(c("normal.ref", "normal.alt"), names(gr2dt(somatic_variants)))
+  ), with = FALSE]
+  
+  germline_dt <- gr2dt(germline_variants)[, .SD[1], by = c("seqnames", "start", "end")]
+  germline_dt <- germline_dt[, c(
+    "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
+    intersect(c("normal.ref", "normal.alt"), names(gr2dt(germline_variants)))
+  ), with = FALSE]
+  
+  het_pileups_dt <- gr2dt(het_pileups)[, .SD[1], by = c("seqnames", "start", "end")]
+  het_pileups_dt <- het_pileups_dt[, .(
+    seqnames,
+    start,
+    end,
+    strand,
+    width,
+    class,
+    ref = ref.count.t,
+    alt = alt.count.t,
+    normal.ref = if ("ref.count.n" %in% names(gr2dt(het_pileups))) ref.count.n else NA,
+    normal.alt = if ("alt.count.n" %in% names(gr2dt(het_pileups))) alt.count.n else NA
+  )]
+  
+  # Combine data.tables and convert back to GRanges
+  variants <- rbind(somatic_dt, germline_dt, het_pileups_dt, fill = TRUE) %>% dt2gr()
+  
+  # Filter out blacklisted variants if mask provided
+  if (!is.null(mask)) {
+    variants <- gr.val(variants, mask, "blacklisted", na.rm = TRUE) %Q%
+      (!is.na(blacklisted)) %Q%
+      (blacklisted == FALSE)
+  }
+  
+  # Remove non-standard chromosomes and get unique variants
+  unique.variants <- variants[, c("class", "ref", "alt")] %>% gr.nochr() %Q%
+    (!seqnames %in% c("Y", "MT")) %>% unique()
+  
+  # Adjust counts with tumor dryclean data if provided
+  if (!is.null(dryclean.cov)) {
+    unique.variants <- gr.val(unique.variants, dryclean.cov, "avg_basecov", na.rm = TRUE)
+    unique.variants$ref_denoised <- unique.variants$ref * unique.variants$avg_basecov /
+      (unique.variants$ref + unique.variants$alt)
+    unique.variants$alt_denoised <- unique.variants$alt * unique.variants$avg_basecov /
+      (unique.variants$ref + unique.variants$alt)
+    
+    unique.variants$major.count <- pmax(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
+    unique.variants$minor.count <- pmin(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
+    fields.to.carry <- c("ref_denoised", "alt_denoised")
+  } else {
+    unique.variants$major.count <- pmax(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
+    unique.variants$minor.count <- pmin(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
+    fields.to.carry <- character()
+  }
+  
+  m <- length(unique.variants$ref + unique.variants$alt)
+  sf <- sum(unique.variants$major.count + unique.variants$minor.count, na.rm = TRUE) / m
+  unique.variants$major.count <- unique.variants$major.count / sf
+  unique.variants$minor.count <- unique.variants$minor.count / sf
+  
+  ncn.vec <- rep(2, length(unique.variants))
+  if (inferred_sex == "M") {
+    if (verbose) message("Adjusting ncn for XY")
+    ncn.vec[as.character(seqnames(unique.variants)) %in% c("X", "chrX", "23", "chr23", "Y", "chrY", "y")] <- 1
+  }
+  values(unique.variants)$minor_constitutional_cn <- ncn.vec - 1
+  unique.variants <- gr.val(unique.variants, cn.gr, "cn", na.rm = TRUE)
+  
+  tau_hat <- mean(unique.variants$cn, na.rm = TRUE)
+  tau <- if (tau_in_gamma) ploidy else tau_hat
+  alpha <- purity
+  beta <- alpha / (alpha * ploidy + 2 * (1 - alpha))
+  gamma <- 2 * (1 - alpha) / (alpha * tau + 2 * (1 - alpha))
+  
+  if (verbose) message(paste0("average total CN of loci: ", tau_hat))
+  if (verbose) message(paste0("ploidy of tumor sample: ", ploidy))
+  if (verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
+  if (verbose) message("applying transformation")
+  
+  # Set coefficients based on variant class
+  mcols(unique.variants)$major_gamma_coeff <- NA
+  mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "SOMATIC"] <- 2
+  mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
+  mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "HET"] <- 1
+  
+  mcols(unique.variants)$minor_gamma_coeff <- NA
+  mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "SOMATIC"] <- 0
+  mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
+  mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "HET"] <- 1
+  
+  mcols(unique.variants)$ncn.add <- ifelse(
+    mcols(unique.variants)$major_gamma_coeff > 2,
+    mcols(unique.variants)$major_gamma_coeff - 1,
+    0
+  )
+  
+  mcols(unique.variants)$major_snv_copies <- 
+    (2 * unique.variants$major.count -
+       (gamma * (unique.variants$minor_constitutional_cn + unique.variants$ncn.add))) / (2 * beta)
+  
+  mcols(unique.variants)$minor_snv_copies <- 
+    (2 * unique.variants$minor.count -
+       (gamma * unique.variants$minor_constitutional_cn * unique.variants$minor_gamma_coeff)) / (2 * beta)
+  
+  mcols(unique.variants)$total_snv_copies <- 
+    unique.variants$major_snv_copies + unique.variants$minor_snv_copies
+  
+  unique.variants$altered_copies <- ifelse(
+    unique.variants$alt >= unique.variants$ref,
+    unique.variants$major_snv_copies,
+    unique.variants$minor_snv_copies
+  )
+  unique.variants$VAF <- unique.variants$alt / (unique.variants$ref + unique.variants$alt)
+  
+  # Apply the computed values back to the original GRanges objects by subsetting based on class
+  somatic_variants <- gr.val(
+    somatic_variants,
+    unique.variants %Q% (class == "SOMATIC"),
+    c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
+      "total_snv_copies", "altered_copies", "VAF")
+  )
+  
+  germline_variants <- gr.val(
+    germline_variants,
+    unique.variants %Q% (class == "GERMLINE"),
+    c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
+      "total_snv_copies", "altered_copies", "VAF")
+  )
+  
+  het_pileups <- gr.val(
+    het_pileups,
+    unique.variants %Q% (class == "HET"),
+    c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
+      "total_snv_copies", "altered_copies", "VAF")
+  )
+  
+  return(list(
+    somatic_variants = somatic_variants,
+    germline_variants = germline_variants,
+    het_pileups = het_pileups
+  ))
+}
 
 #' @title Preprocess inputs for multiplicity
 #' @description Helper function to preprocess and validate inputs for the main multiplicity function.
