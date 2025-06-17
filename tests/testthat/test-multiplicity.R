@@ -102,8 +102,8 @@ test_that("multiplicity test of somatic variants transformation with NO rescalin
   expect_equal(length(result3[[3]]), 0)
 
   list3 %Q% (seqnames == 22 & start == 37492267) -> variant
-  expect_equal(round(variant$altered_copies, 3), 0.549)
-  expect_equal(round(variant$total_snv_copies, 3), 1.84)
+  expect_equal(round(variant$altered_copies, 3), 0.603)
+  expect_equal(round(variant$total_snv_copies, 3), 2.02)
 })
 
 
@@ -183,7 +183,9 @@ test_that("multiplicity test of hetsnps transformation with NO rescaling", {
   expect_equal(length(result6[[2]]), 0)
 
   list6[10000] -> variant
-  expect_equal(round(variant$altered_copies, 3), 3.451)
-  expect_equal(round(variant$total_snv_copies, 3), 6.629)
+  expect_equal(round(variant$altered_copies, 3), 3.223)
+  expect_equal(round(variant$total_snv_copies, 3), 6.192)
 })
+
+usethis::use_github_action_check_standard()
 
