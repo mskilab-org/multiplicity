@@ -421,6 +421,7 @@ preprocess_multiplicity_inputs <- function(somatic_snv,
                        read_size,
                        ploidy,
                        purity,
+                       binwidth = NULL,
                        verbose) {
   ### if any filepaths are /dev/null, turn them into true NULL characters.
   vars_to_normalize <- c("somatic_snv", "germline_snv", "het_pileups_wgs", "tumor_dryclean", "tumor_cbs")
@@ -445,63 +446,67 @@ preprocess_multiplicity_inputs <- function(somatic_snv,
   is_jabba_null <- is.null(jabba_rds) || identical(jabba_rds, base::nullfile())
   is_jabba_na <- is_jabba_len_one && (is.na(jabba_rds) || identical(jabba_rds, "NA"))
 
-  if (!is_jabba_null && !is_jabba_na) {
-  if (verbose) message("Processing JaBbA input...")
-  is_jabba_existent <- is_jabba_character && is_jabba_len_one && file.exists(jabba_rds)
-  is_jabba_nonexistent <- is_jabba_character && is_jabba_len_one && !file.exists(jabba_rds)
-  is_jabba_invalid <- is_jabba_character && !is_jabba_len_one
+  if (!is_jabba_null && !is_jabba_na) { ### 1. Process JaBbA input
+    if (verbose) message("Processing JaBbA input...")
 
-  if (is_jabba_nonexistent) {
-    stop("Path to JaBbA provided to 'jabba_rds' does not exist.")
-  } else if (is_jabba_invalid) {
-    stop("Path to jabba provided to 'jabba_rds' is a character but not length one.")
+    is_jabba_existent <- is_jabba_character && is_jabba_len_one && file.exists(jabba_rds)
+    is_jabba_nonexistent <- is_jabba_character && is_jabba_len_one && !file.exists(jabba_rds)
+    is_jabba_invalid <- is_jabba_character && !is_jabba_len_one
+
+    if (is_jabba_nonexistent) {
+      stop("Path to JaBbA provided to 'jabba_rds' does not exist.")
+    } else if (is_jabba_invalid) {
+      stop("Path to jabba provided to 'jabba_rds' is a character but not length one.")
+    }
+
+    is_jabba_rds <- is_jabba_existent && grepl("rds$", jabba_rds, ignore.case = TRUE)
+    is_jabba_list_like <- is.list(jabba_rds) && all(c("segstats", "junctions", "gtrack") %in% names(jabba_rds)) # Simplified check
+    is_jabba_ggraph <- inherits(jabba_rds, "gGraph")
+
+    if (is_jabba_rds || is_jabba_list_like) {
+      gg <- gGnome::gG(jabba = jabba_rds)
+    } else if (is_jabba_ggraph) {
+      gg <- jabba_rds
+    } else if (is_jabba_existent) { # Catch other file types if existent but not RDS
+      stop("Path to jabba provided to 'jabba_rds' is an unsupported file type. Expecting an RDS, a gGraph object, or a list-like Jabba structure.")
+    } else if (!is_jabba_character) { # jabba_rds is an object but not gGraph or recognized list
+      stop("'jabba_rds' is an object of unrecognized type. Expecting a file path, a gGraph object, or a list-like Jabba structure.")
+    }
+
+    if (is.null(gg)) {
+      stop("Failed to load or process jabba_rds into a gGraph object.")
+    }
+
+    jab <- gUtils::dt2gr(gUtils::gr2dt(gg$nodes$gr)[seqnames == 23, seqnames := "X"][seqnames == 24, seqnames := "Y"])
+    GenomeInfoDb::seqlevelsStyle(jab) <- "NCBI"
+    cn.gr <- jab[as.logical(strand(jab) == "+")]
+
+    if (verbose) message("Successfully processed JaBbA graph!")
+
   }
-
-  is_jabba_rds <- is_jabba_existent && grepl("rds$", jabba_rds, ignore.case = TRUE)
-  is_jabba_list_like <- is.list(jabba_rds) && all(c("segstats", "junctions", "gtrack") %in% names(jabba_rds)) # Simplified check
-  is_jabba_ggraph <- inherits(jabba_rds, "gGraph")
-
-  if (is_jabba_rds || is_jabba_list_like) {
-    gg <- gGnome::gG(jabba = jabba_rds)
-  } else if (is_jabba_ggraph) {
-    gg <- jabba_rds
-  } else if (is_jabba_existent) { # Catch other file types if existent but not RDS
-    stop("Path to jabba provided to 'jabba_rds' is an unsupported file type. Expecting an RDS, a gGraph object, or a list-like Jabba structure.")
-  } else if (!is_jabba_character) { # jabba_rds is an object but not gGraph or recognized list
-    stop("'jabba_rds' is an object of unrecognized type. Expecting a file path, a gGraph object, or a list-like Jabba structure.")
-  }
-
-
-  if (is.null(gg)) {
-    stop("Failed to load or process jabba_rds into a gGraph object.")
-  }
-
-  jab <- gUtils::dt2gr(gUtils::gr2dt(gg$nodes$gr)[seqnames == 23, seqnames := "X"][seqnames == 24, seqnames := "Y"])
-  GenomeInfoDb::seqlevelsStyle(jab) <- "NCBI"
-  cn.gr <- jab[as.logical(strand(jab) == "+")]
-  if (verbose) message("Successfully processed JaBbA graph!")
-  }
+  
   is_jabba_obj_present <- !is.null(gg) && !is.null(cn.gr)
 
-  if (is.null(ploidy)) {
-  if (!is_jabba_obj_present || is.null(gg$meta)) {
-    stop("ploidy not provided, and JaBbA object (gg) or its metadata (gg$meta) is not available to infer ploidy. Please provide ploidy.")
+  if (is.null(ploidy)) { ### 2. Process Ploidy
+    if (!is_jabba_obj_present || is.null(gg$meta)) {
+      stop("ploidy not provided, and JaBbA object (gg) or its metadata (gg$meta) is not available to infer ploidy. Please provide ploidy.")
+    }
+    fetched_ploidy <- try(gg$meta[["ploidy"]], silent = TRUE) # More direct for lists
+    if (inherits(fetched_ploidy, "try-error") || is.null(fetched_ploidy)) {
+      stop("ploidy not provided, and could not be found or is NULL in gGraph 'meta' field. You must provide a ploidy solution.")
+    }
+    ploidy <- fetched_ploidy
   }
-  fetched_ploidy <- try(gg$meta[["ploidy"]], silent = TRUE) # More direct for lists
-  if (inherits(fetched_ploidy, "try-error") || is.null(fetched_ploidy)) {
-    stop("ploidy not provided, and could not be found or is NULL in gGraph 'meta' field. You must provide a ploidy solution.")
-  }
-  ploidy <- fetched_ploidy
-  }
-  if (is.null(purity)) {
-  if (!is_jabba_obj_present || is.null(gg$meta)) {
-    stop("purity not provided, and JaBbA object (gg) or its metadata (gg$meta) is not available to infer purity. Please provide purity.")
-  }
-  fetched_purity <- try(gg$meta[["purity"]], silent = TRUE)
-  if (inherits(fetched_purity, "try-error") || is.null(fetched_purity)) {
-    stop("purity not provided, and could not be found or is NULL in gGraph 'meta' field. You must provide a purity solution.")
-  }
-  purity <- fetched_purity
+
+  if (is.null(purity)) { ### 3. Process Purity
+    if (!is_jabba_obj_present || is.null(gg$meta)) {
+      stop("purity not provided, and JaBbA object (gg) or its metadata (gg$meta) is not available to infer purity. Please provide purity.")
+    }
+    fetched_purity <- try(gg$meta[["purity"]], silent = TRUE)
+    if (inherits(fetched_purity, "try-error") || is.null(fetched_purity)) {
+      stop("purity not provided, and could not be found or is NULL in gGraph 'meta' field. You must provide a purity solution.")
+    }
+    purity <- fetched_purity
   }
 
   read_size <- as.numeric(read_size)
@@ -510,170 +515,221 @@ preprocess_multiplicity_inputs <- function(somatic_snv,
   is_cov_len_one <- NROW(tumor_dryclean) == 1
   is_cov_null <- is.null(tumor_dryclean) || identical(tumor_dryclean, base::nullfile())
   is_cov_na <- is_cov_len_one && (is.na(tumor_dryclean) || identical(tumor_dryclean, "NA"))
-  dryclean.cov <- NULL
-
-  if (!is_cov_null && !is_cov_na) {
-  if (verbose) message("Processing tumor dryclean coverage...")
   is_cov_existent <- is_cov_character && is_cov_len_one && file.exists(tumor_dryclean)
   is_cov_nonexistent <- is_cov_character && is_cov_len_one && !file.exists(tumor_dryclean)
   is_cov_invalid <- is_cov_character && !is_cov_len_one
+  dryclean.cov <- NULL
 
-  if (is_cov_nonexistent) {
-    stop("Path to coverage provided to 'tumor_dryclean' does not exist.")
-  } else if (is_cov_invalid) {
-    stop("Path to coverage provided to 'tumor_dryclean' is a character but not length 1.")
-  }
+  if (!is_cov_null && !is_cov_na) { ### 4. Process Tumor Dryclean Coverage
+    
+    if (verbose) message("Processing tumor dryclean coverage...")
 
-  current_dryclean_obj <- NULL
-  if (is_cov_existent && grepl("rds$", tumor_dryclean, ignore.case = TRUE)) {
-    current_dryclean_obj <- readRDS(tumor_dryclean)
-  } else if (is_cov_existent) { # Assumed text file if not RDS
-    current_dryclean_obj <- data.table::fread(tumor_dryclean)
-  } else if (!is_cov_character) { # tumor_dryclean is already an object
-    current_dryclean_obj <- tumor_dryclean
-  } else { # Should not be reached if previous checks are correct
-    stop("Could not load tumor_dryclean input.")
-  }
+    if (is_cov_nonexistent) {
+      stop("Path to coverage provided to 'tumor_dryclean' does not exist.")
+    } else if (is_cov_invalid) {
+      stop("Path to coverage provided to 'tumor_dryclean' is a character but not length 1.")
+    }
 
-  if (inherits(current_dryclean_obj, "data.frame")) {
-    current_dryclean_obj <- gUtils::dt2gr(current_dryclean_obj)
-    GenomeInfoDb::seqlevelsStyle(current_dryclean_obj) <- "NCBI"
-  }
-  if (!inherits(current_dryclean_obj, "GRanges")) {
-    stop("Provided tumor_dryclean must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format.")
-  }
-  dryclean.cov <- current_dryclean_obj
+    current_dryclean_obj <- NULL
 
-  if (!dryclean_field %in% names(mcols(dryclean.cov))) {
-    stop(paste0("dryclean_field '", dryclean_field, "' not found in tumor_dryclean metadata columns. Available columns: ", paste(names(mcols(dryclean.cov)), collapse = ", ")))
+    if (is_cov_existent && grepl("rds$", tumor_dryclean, ignore.case = TRUE)) {
+      current_dryclean_obj <- readRDS(tumor_dryclean)
+    } else if (is_cov_existent) { # Assumed text file if not RDS
+      current_dryclean_obj <- data.table::fread(tumor_dryclean)
+    } else if (!is_cov_character) { # tumor_dryclean is already an object
+      current_dryclean_obj <- tumor_dryclean
+    } else { # Should not be reached if previous checks are correct
+      stop("Could not load tumor_dryclean input.")
+    }
+
+    if (inherits(current_dryclean_obj, "data.frame")) {
+      current_dryclean_obj <- gUtils::dt2gr(current_dryclean_obj)
+      GenomeInfoDb::seqlevelsStyle(current_dryclean_obj) <- "NCBI"
+    }
+    if (!inherits(current_dryclean_obj, "GRanges")) {
+      stop("Provided tumor_dryclean must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format.")
+    }
+    dryclean.cov <- current_dryclean_obj
+    if (!dryclean_field %in% names(mcols(dryclean.cov))) {
+      stop(paste0("dryclean_field '", dryclean_field, "' not found in tumor_dryclean metadata columns. Available columns: ", paste(names(mcols(dryclean.cov)), collapse = ", ")))
+    }
+    
+    cov.vector <- mcols(dryclean.cov)[[dryclean_field]]
+    mcols(dryclean.cov) <- NULL # Clear mcols before adding new ones
+    mcols(dryclean.cov)$bincov <- cov.vector
+    mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
+    is_cov_obj_present <- !is.null(dryclean.cov)
+
   }
-  cov.vector <- mcols(dryclean.cov)[[dryclean_field]]
-  mcols(dryclean.cov) <- NULL # Clear mcols before adding new ones
-  mcols(dryclean.cov)$bincov <- cov.vector
-  mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
-  }
-  is_cov_obj_present <- !is.null(dryclean.cov)
 
   is_seg_character <- is.character(tumor_cbs)
   is_seg_len_one <- NROW(tumor_cbs) == 1
   is_seg_null <- is.null(tumor_cbs) || identical(tumor_cbs, base::nullfile())
   is_seg_na <- is_seg_len_one && (is.na(tumor_cbs) || identical(tumor_cbs, "NA"))
-  cbs.cov.gr <- NULL # Use a distinct name for CBS GRanges
-  cbs.vector <- NULL
-
-  is_both_jabba_and_cov_present <- is_jabba_obj_present && is_cov_obj_present
-
-  if (is_both_jabba_and_cov_present) {
-  if (verbose) message("Using JaBbA segmentation and binned coverage to get segment level mean coverage.")
-  if (!is.null(cn.gr) && !is.null(dryclean.cov) && "bincov" %in% names(mcols(dryclean.cov))) {
-    seg_stats_result <- JaBbA:::segstats(cn.gr, dryclean.cov, field = "bincov")
-    cbs.cov.gr <- cn.gr
-    mcols(cbs.cov.gr) <- cbind(mcols(cn.gr), mcols(seg_stats_result)) # Combine metadata carefully
-    cbs.vector <- cbs.cov.gr$mean
-  } else {
-    if (verbose) message("Inputs cn.gr or dryclean.cov (with bincov) are not suitable for JaBbA:::segstats. Skipping this step.")
-  }
-  }
-
-  if (!is_both_jabba_and_cov_present && (!is_seg_null && !is_seg_na)) {
-  if (verbose) message("Processing tumor CBS segmentation...")
   is_seg_existent <- is_seg_character && is_seg_len_one && file.exists(tumor_cbs)
   is_seg_nonexistent <- is_seg_character && is_seg_len_one && !file.exists(tumor_cbs)
   is_seg_invalid <- is_seg_character && !is_seg_len_one
 
-  if (is_seg_nonexistent) {
-    stop("Path to segmentation provided to 'tumor_cbs' does not exist.")
-  } else if (is_seg_invalid) {
-    stop("Path to segmentation provided to 'tumor_cbs' is invalid (not length one character).")
-  }
+  is_both_jabba_and_cov_present <- is_jabba_obj_present && is_cov_obj_present
 
-  current_cbs_obj <- NULL
-  if (is_seg_existent && grepl("rds$", tumor_cbs, ignore.case = TRUE)) {
-    current_cbs_obj <- readRDS(tumor_cbs)
-  } else if (is_seg_existent) {
-    current_cbs_obj <- data.table::fread(tumor_cbs)
-  } else if (!is_seg_character) {
-    current_cbs_obj <- tumor_cbs
-  } else {
-    stop("Could not load tumor_cbs input.")
-  }
+  if (is_both_jabba_and_cov_present) {
 
-  if (inherits(current_cbs_obj, "data.frame")) {
-    current_cbs_obj <- gUtils::dt2gr(current_cbs_obj)
-    GenomeInfoDb::seqlevelsStyle(current_cbs_obj) <- "NCBI"
-  }
-  if (!inherits(current_cbs_obj, "GRanges")) {
-    stop("Provided tumor_cbs must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format.")
-  }
-  cbs.cov.gr <- current_cbs_obj
+    if (verbose) message("Using JaBbA segmentation and binned coverage to get segment level mean coverage.")
 
-  seg_mean_val <- NULL
-  if ("seg.mean" %in% names(mcols(cbs.cov.gr))) {
-    seg_mean_val <- mcols(cbs.cov.gr)[["seg.mean"]]
-  }
-
-  if (!is.null(seg_mean_val)) {
-    cbs.vector <- seg_mean_val
-    if (verbose) message("Assuming segmentation seg.mean is log-scaled, converting to linear.")
-    cbs.vector <- exp(cbs.vector)
-  } else if (is_cov_obj_present) { # seg.mean not found, but binned coverage exists
-    if (verbose) message("seg.mean not found in tumor_cbs, recomputing segment means using provided binned coverage on CBS segments.")
-    if (!is.null(cbs.cov.gr) && !is.null(dryclean.cov) && "bincov" %in% names(mcols(dryclean.cov))) {
-    seg_stats_result <- JaBbA:::segstats(cbs.cov.gr, dryclean.cov, field = "bincov")
-    mcols(cbs.cov.gr) <- cbind(mcols(cbs.cov.gr), mcols(seg_stats_result))
-    cbs.vector <- cbs.cov.gr$mean
-    } else {
-    if (verbose) message("Inputs cbs.cov.gr or dryclean.cov (with bincov) are not suitable for JaBbA:::segstats. Cannot recompute segment means for CBS.")
+    if (!is.null(cn.gr) && !is.null(dryclean.cov) && "bincov" %in% names(mcols(dryclean.cov))) {
+      seg_stats_result <- JaBbA:::segstats(cn.gr, dryclean.cov, field = "bincov")
+      cbs.cov.gr <- cn.gr
+      mcols(cbs.cov.gr) <- cbind(mcols(cn.gr), mcols(seg_stats_result)) # Combine metadata carefully
+      cbs.vector <- cbs.cov.gr$mean
     }
-  } else { # seg.mean not found, and no binned coverage to recompute
-    stop("No seg.mean values available in tumor_cbs, and no binned coverage (tumor_dryclean) provided to recompute.")
+  
+  if (!is_both_jabba_and_cov_present && (!is_seg_null && !is_seg_na)) {
+    
+    if (verbose) message("Processing tumor CBS segmentation...")
+
+    if (is_seg_nonexistent) {
+      stop("Path to segmentation provided to 'tumor_cbs' does not exist.")
+    } else if (is_seg_invalid) {
+      stop("Path to segmentation provided to 'tumor_cbs' is invalid (not length one character).")
+    }
+
+    current_cbs_obj <- NULL
+    cbs.cov.gr <- NULL # Use a distinct name for CBS GRanges
+    cbs.vector <- NULL
+
+    if (is_seg_existent && grepl("rds$", tumor_cbs, ignore.case = TRUE)) {
+      current_cbs_obj <- readRDS(tumor_cbs)
+    } else if (is_seg_existent) {
+      current_cbs_obj <- data.table::fread(tumor_cbs)
+    } else if (!is_seg_character) {
+      current_cbs_obj <- tumor_cbs
+    } else {
+      stop("Could not load tumor_cbs input.")
+    }
+
+    if (inherits(current_cbs_obj, "data.frame")) {
+      current_cbs_obj <- gUtils::dt2gr(current_cbs_obj)
+      GenomeInfoDb::seqlevelsStyle(current_cbs_obj) <- "NCBI"
+    }
+    if (!inherits(current_cbs_obj, "GRanges")) {
+      stop("Provided tumor_cbs must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format.")
+    }
+    cbs.cov.gr <- current_cbs_obj
+
+    seg_mean_val <- NULL
+    if ("seg.mean" %in% names(mcols(cbs.cov.gr))) {
+      seg_mean_val <- mcols(cbs.cov.gr)[["seg.mean"]]
+    } else{
+      stop("seg.mean not found in tumor_cbs metadata columns. Available columns: ", paste(names(mcols(cbs.cov.gr)), collapse = ", "))
+    }
+
+    if (!is.null(seg_mean_val)) {
+      cbs.vector <- seg_mean_val
+      if (verbose) message("Assuming segmentation seg.mean is log-scaled, converting to linear.")
+      cbs.vector <- exp(cbs.vector)
+    } else if (is_cov_obj_present) { # seg.mean not found, but binned coverage exists
+      if (verbose) message("seg.mean not found in tumor_cbs, recomputing segment means using provided binned coverage on CBS segments.")
+      if (!is.null(cbs.cov.gr) && !is.null(dryclean.cov) && "bincov" %in% names(mcols(dryclean.cov))) {
+        seg_stats_result <- JaBbA:::segstats(cbs.cov.gr, dryclean.cov, field = "bincov")
+        mcols(cbs.cov.gr) <- cbind(mcols(cbs.cov.gr), mcols(seg_stats_result))
+        cbs.vector <- cbs.cov.gr$mean
+      } else {
+        if(verbose) message("Inputs cbs.cov.gr or dryclean.cov (with bincov) are not suitable for JaBbA:::segstats. Cannot recompute segment means for CBS.")
+      }
+    } else { # seg.mean not found, and no binned coverage to recompute
+      stop("No seg.mean values available in tumor_cbs, and no binned coverage (tumor_dryclean) provided to recompute.")
+    }
+
+    if (!is_jabba_obj_present && !is.null(cbs.cov.gr) && !is.null(cbs.vector)) {
+
+      if (verbose) message("Deriving cn.gr from CBS segmentation as JaBbA was not provided/processed.")
+
+      temp_mcols <- mcols(cbs.cov.gr) # Preserve original mcols
+      mcols(cbs.cov.gr)$cov_val <- cbs.vector # Temporary column for rel2abs
+      # rel2abs returns a GRanges with new 'cn' column
+      abs_cn_gr <- skitools::rel2abs(cbs.cov.gr, "cov_val", purity = purity, ploidy = ploidy)
+      cn.gr <- abs_cn_gr # This now has 'cn'
+      jab <- cn.gr # jab is used for consistency if Jabba was primary source
+      # mcols(cbs.cov.gr) <- temp_mcols # Restore original mcols if needed, or select specific ones
+      is_jabba_obj_present <- TRUE # Mark as present because cn.gr is now derived
+    }
+  }
+  
+  is_seg_obj_present = !is.null(cbs.cov) && !is.null(cbs.vector)
+
+  is_bin_width_empty = is.null(bin_width) || NROW(bin_width) == 0
+  is_bin_width_numeric = !is_bin_width_empty && is.numeric(bin_width)
+  is_no_bin_width_info = is_bin_width_empty && !is_cov_obj_present
+  if (!is_bin_width_numeric) {
+	  bin_width = as.numeric(bin_width)
+  }
+  is_bin_width_invalid_or_na = !is_bin_width_empty && (NROW(bin_width != 1) || any(is.na(bin_width)))
+  is_bin_width_default_used = is_no_bin_width_info || is_bin_width_invalid_or_na
+  
+  if (is_cov_obj_present) {
+	  provided_widths = GenomicRanges::width(dryclean.cov)
+	  bin_hist = graphics::hist(round(provided_widths / 100) * 100)
+	  dt_hist = data.table(breaks = bin_hist$breaks[-1], counts = bin_hist$counts)
+	  dt_hist_max = dt_hist[
+		  counts == max(counts, na.rm = TRUE) 
+		  & breaks == max(breaks, na.rm = TRUE)
+	  ][1,]
+	  provided_bin_width = dt_hist_max$breaks
+	  bin_width = provided_bin_width
+	  if (!is_bin_width_empty) message("Overriding bin_width with inferred mode of provided coverage bin width: ", bin_width)
+  } else if (is_bin_width_default_used) {
+	  bin_width = 1e3
+	  if (is_no_bin_width_info) message("bin_width not provided and no coverage object present, assuming bin_width: ", bin_width)
+	  if (is_bin_width_invalid_or_na) message("improper bin_width format provided and no coverage object present, assuming bin_width: ", bin_width)
   }
 
-  if (!is_jabba_obj_present && !is.null(cbs.cov.gr) && !is.null(cbs.vector)) {
-    if (verbose) message("Deriving cn.gr from CBS segmentation as JaBbA was not provided/processed.")
-    temp_mcols <- mcols(cbs.cov.gr) # Preserve original mcols
-    mcols(cbs.cov.gr)$cov_val <- cbs.vector # Temporary column for rel2abs
 
-    # rel2abs returns a GRanges with new 'cn' column
-    abs_cn_gr <- skitools::rel2abs(cbs.cov.gr, "cov_val", purity = purity, ploidy = ploidy)
+  if (is_seg_obj_present) {
+    mcols(cbs.cov) <- NULL
+    mcols(cbs.cov)$bincov = cbs.vector
+    cbs.cov <- gr.tile(seqlengths(cbs.cov), bin_width) %>% gr.val(cbs.cov, "bincov")
+	  ix_bincov_na = which(is.na(cbs.cov$bincov))
+	  any_bincov_na = NROW(ix_bincov_na) > 0
+  	if (any_bincov_na) cbs.cov[ix_bincov_na]$bincov <- 0
+    mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
+    if (is_cov_obj_present) {
+      message("Provided segmentation superseding drycleaned binned coverage")
+    }
+    dryclean.cov = cbs.cov
+  }
 
-    cn.gr <- abs_cn_gr # This now has 'cn'
-    jab <- cn.gr # jab is used for consistency if Jabba was primary source
-    # mcols(cbs.cov.gr) <- temp_mcols # Restore original mcols if needed, or select specific ones
-    is_jabba_obj_present <- TRUE # Mark as present because cn.gr is now derived
-  }
-  }
 
   is_seg_obj_processed <- !is.null(cbs.cov.gr) && !is.null(cbs.vector)
+  
   if (is_seg_obj_processed) {
-  if (verbose) message("Overriding dryclean.cov with processed CBS data.")
-  # Create a new GRanges for the tiled coverage from CBS means
-  tiled_cbs_gr <- NULL
-  valid_seqlengths <- !is.null(seqlengths(cbs.cov.gr)) && all(!is.na(seqlengths(cbs.cov.gr))) && all(is.finite(seqlengths(cbs.cov.gr)))
+    if (verbose) message("Overriding dryclean.cov with processed CBS data.")
+    # Create a new GRanges for the tiled coverage from CBS means
+    tiled_cbs_gr <- NULL
+    valid_seqlengths <- !is.null(seqlengths(cbs.cov.gr)) && all(!is.na(seqlengths(cbs.cov.gr))) && all(is.finite(seqlengths(cbs.cov.gr)))
 
-  if (valid_seqlengths) {
-    tiled_cbs_gr <- gUtils::gr.tile(seqlengths(cbs.cov.gr), 1000)
+    if (valid_seqlengths) {
+      tiled_cbs_gr <- gUtils::gr.tile(seqlengths(cbs.cov.gr), 1000)
 
-    # For gr.val, ensure cbs.cov.gr has only the 'bincov' (which is cbs.vector)
-    temp_val_gr <- cbs.cov.gr
-    mcols(temp_val_gr) <- S4Vectors::DataFrame(bincov = cbs.vector) # Use segment means as bincov
+      # For gr.val, ensure cbs.cov.gr has only the 'bincov' (which is cbs.vector)
+      temp_val_gr <- cbs.cov.gr
+      mcols(temp_val_gr) <- S4Vectors::DataFrame(bincov = cbs.vector) # Use segment means as bincov
 
-    tiled_cbs_gr <- gUtils::gr.val(tiled_cbs_gr, temp_val_gr, "bincov")
-    tiled_cbs_gr$bincov[is.na(tiled_cbs_gr$bincov)] <- 0
-    tiled_cbs_gr$avg_basecov <- tiled_cbs_gr$bincov * 2 * read_size / width(tiled_cbs_gr)
-  } else {
-    if (verbose) message("Cannot tile CBS coverage due to missing or invalid seqlengths. Using segment-level CBS data directly for dryclean.cov override.")
-    # Fallback: use the segment-level cbs.cov.gr, ensuring it has bincov and avg_basecov
-    tiled_cbs_gr <- cbs.cov.gr
-    mcols(tiled_cbs_gr)$bincov <- cbs.vector # Ensure bincov is the segment mean
-    mcols(tiled_cbs_gr)$avg_basecov <- tiled_cbs_gr$bincov * 2 * read_size / width(tiled_cbs_gr)
-  }
+      tiled_cbs_gr <- gUtils::gr.val(tiled_cbs_gr, temp_val_gr, "bincov")
+      tiled_cbs_gr$bincov[is.na(tiled_cbs_gr$bincov)] <- 0
+      tiled_cbs_gr$avg_basecov <- tiled_cbs_gr$bincov * 2 * read_size / width(tiled_cbs_gr)
+    } else {
+      if (verbose) message("Cannot tile CBS coverage due to missing or invalid seqlengths. Using segment-level CBS data directly for dryclean.cov override.")
+      # Fallback: use the segment-level cbs.cov.gr, ensuring it has bincov and avg_basecov
+      tiled_cbs_gr <- cbs.cov.gr
+      mcols(tiled_cbs_gr)$bincov <- cbs.vector # Ensure bincov is the segment mean
+      mcols(tiled_cbs_gr)$avg_basecov <- tiled_cbs_gr$bincov * 2 * read_size / width(tiled_cbs_gr)
+    }
 
-  if (is_cov_obj_present && verbose) {
-    message("Provided CBS segmentation is superseding binned coverage from tumor_dryclean.")
-  }
-  dryclean.cov <- tiled_cbs_gr
-  is_cov_obj_present <- TRUE # dryclean.cov is now set from CBS
+    if (is_cov_obj_present && verbose) {
+      message("Provided CBS segmentation is superseding binned coverage from tumor_dryclean.")
+    }
+    dryclean.cov <- tiled_cbs_gr
+    is_cov_obj_present <- TRUE # dryclean.cov is now set from CBS
   }
 
   if (is.null(cn.gr)) {
@@ -727,6 +783,7 @@ preprocess_multiplicity_inputs <- function(somatic_snv,
       message("Sex could not be inferred and was not explicitly M/F. Proceeding with 'inferred_sex' as NA.")
     }
   }
+
   if (verbose) message("Preprocessing of inputs complete.")
 
   return(

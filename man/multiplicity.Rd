@@ -22,7 +22,8 @@ multiplicity(
   tau_in_gamma = FALSE,
   purity = NULL,
   ploidy = NULL,
-  verbose = FALSE
+  verbose = FALSE,
+  bin_width = NULL
 )
 }
 \arguments{
