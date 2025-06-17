@@ -6,7 +6,6 @@
 snvplicity <- function(...) {
   multiplicity(...)
 }
-
 #' @name multiplicity
 #' @title Converts counts to copies.
 #'
@@ -32,319 +31,594 @@ snvplicity <- function(...) {
 #' @return Returns a GRanges with counts and converted copies
 #' @export
 multiplicity <- function(somatic_snv = NULL,
-                         germline_snv = NULL,
-                         het_pileups_wgs = NULL,
-                         tumor_cbs = NULL,
-                         tumor_dryclean = NULL,
-                         dryclean_field,
-                         jabba_rds,
-                         mask = NULL,
-                         inferred_sex = NA,
-                         read_size = 151,
-                         snpeff_path = system.file("extdata", "snpeff_scripts", package = "multiplicity"),
-                         tumor_name = NULL,
-                         normal_name = NULL,
-                         filterpass = FALSE,
-                         tau_in_gamma = FALSE,
-                         purity = NULL,
-                         ploidy = NULL,
-                         modeltype = "unified",
-                         verbose = FALSE) {
+             germline_snv = NULL,
+             het_pileups_wgs = NULL,
+             tumor_cbs = NULL,
+             tumor_dryclean = NULL,
+             dryclean_field,
+             jabba_rds,
+             mask = NULL,
+             inferred_sex = NA,
+             read_size = 151,
+             snpeff_path = system.file("extdata", "snpeff_scripts", package = "multiplicity"),
+             tumor_name = NULL,
+             normal_name = NULL,
+             filterpass = FALSE,
+             tau_in_gamma = FALSE,
+             purity = NULL,
+             ploidy = NULL,
+             modeltype = "unified",
+             verbose = FALSE) {
 
-  #' @title Preprocess inputs for multiplicity
-  #' @description Helper function to preprocess and validate inputs for the main multiplicity function.
-  #' @param somatic_snv Path to somatic SNV file.
-  #' @param germline_snv Path to germline SNV file.
-  #' @param het_pileups_wgs Path to het_pileups_wgs file.
-  #' @param tumor_cbs Path to segmented drycleaned coverage file.
-  #' @param tumor_dryclean Path to drycleaned coverage file.
-  #' @param dryclean_field Specification of field in tumor_dryclean gRanges.
-  #' @param jabba_rds Path to jabba file or gGraph object.
-  #' @param mask Path to mask gRanges RDS file or gRanges object.
-  #' @param inferred_sex Enum of ["M", "F"].
-  #' @param read_size Estimated average read size.
-  #' @param ploidy Ploidy of the sample.
-  #' @param purity Purity of the sample.
-  #' @param verbose Verbose output?
-  #' @return A list containing preprocessed inputs:
-  #'         somatic_snv, germline_snv, het_pileups_wgs, cn.gr,
-  #'         dryclean.cov, inferred_sex, purity, ploidy, mask.
-  #' @keywords internal
-  preprocess_multiplicity_inputs <- function(somatic_snv,
-                         germline_snv,
-                         het_pileups_wgs,
-                         tumor_cbs,
-                         tumor_dryclean,
-                         dryclean_field,
-                         jabba_rds,
-                         mask,
-                         inferred_sex,
-                         read_size,
-                         ploidy,
-                         purity,
-                         verbose) {
-    ### if any filepaths are /dev/null, turn them into true NULL characters.
-    vars_to_normalize <- c("somatic_snv", "germline_snv", "het_pileups_wgs", "tumor_dryclean", "tumor_cbs")
-    for (var_name in vars_to_normalize) {
-    assign(var_name, normalize_path(get(var_name)))
-    }
+              preprocessed_inputs <- preprocess_multiplicity_inputs(
+                somatic_snv = somatic_snv,
+                germline_snv = germline_snv,
+                het_pileups_wgs = het_pileups_wgs,
+                tumor_cbs = tumor_cbs,
+                tumor_dryclean = tumor_dryclean,
+                dryclean_field = dryclean_field,
+                jabba_rds = jabba_rds,
+                mask = mask,
+                inferred_sex = inferred_sex,
+                read_size = read_size,
+                ploidy = ploidy,
+                purity = purity,
+                verbose = verbose
+              )
 
-    if (verbose) {
+              somatic_variants <- NULL
+              germline_variants <- NULL
+              het_pileups <- NULL
+
+              cn.gr <- preprocessed_inputs$cn.gr
+              dryclean.cov <- preprocessed_inputs$dryclean.cov
+              inferred_sex <- preprocessed_inputs$inferred_sex
+              purity <- preprocessed_inputs$purity
+              ploidy <- preprocessed_inputs$ploidy
+              mask <- preprocessed_inputs$mask
+              browser()
+
+              if (modeltype == "unified") {
+                ##### UNIFIED MODEL #####
+                if (verbose) message("Using unified processing model.")
+                
+                if (!is.na(somatic_snv_path) && !is.null(somatic_snv_path)) {
+                  if (verbose) message("Processing somatic variants (unified model using parsesnpeff).")
+                  somatic_variants <- parsesnpeff(
+                    vcf = somatic_snv,
+                    snpeff_path = snpeff_path,
+                    coding_alt_only = FALSE, # As per original commented-out code
+                    filterpass = filterpass, # Uses the main filterpass parameter
+                    tumor_id = tumor_name,
+                    normal_id = normal_name,
+                    keepfile = FALSE,
+                    altpipe = TRUE,
+                    verbose = verbose
+                  )
+                }
+                
+                if (!is.na(germline_snv_path) && !is.null(germline_snv_path)) {
+                  if (verbose) message("Processing germline variants (unified model using parsesnpeff).")
+                  germline_variants <- parsesnpeff(
+                    vcf = germline_snv,
+                    snpeff_path = snpeff_path,
+                    coding_alt_only = FALSE, # As per original commented-out code
+                    filterpass = filterpass, # Uses the main filterpass parameter
+                    tumor_id = tumor_name,
+                    normal_id = normal_name,
+                    keepfile = FALSE,
+                    altpipe = TRUE,
+                    verbose = verbose
+                  )
+                }
+                
+                if (!is.na(het_pileups_wgs) && !is.null(het_pileups_wgs)) {
+                  if (verbose) message("Processing heterozygous SNPs (unified model - basic load).")
+                  if (file.exists(het_pileups_wgs_path)) {
+                    # Assuming het_pileups_wgs_path is a file to be read by fread and converted
+                    het_data <- data.table::fread(het_pileups_wgs)
+                    if (inherits(het_data, "data.frame")) {
+                      het_pileups <- gUtils::dt2gr(het_data) # Ensure gUtils is available
+                    } else {
+                      if (verbose) message("Loaded het_pileups data is not a data.frame, cannot convert to GRanges.")
+                      het_pileups <- NULL
+                    }
+                    if (!is.null(het_pileups) && !inherits(het_pileups, "GRanges")) {
+                      warning("Failed to convert het_pileups to GRanges in unified model.")
+                      het_pileups <- NULL
+                    }
+                  } else {
+                    if (verbose) message("Het pileups file not found for unified model: ", het_pileups_wgs_path)
+                    het_pileups <- NULL
+                  }
+                }
+                
+                names(somatic_variants) <- NULL
+                names(germline_variants) <- NULL
+                names(het_pileups) <- NULL
+                
+                mcols(somatic_variants)$class <- "SOMATIC"
+                mcols(germline_variants)$class <- "GERMLINE"
+                mcols(het_pileups)$class <- "HET"
+                
+                somatic_dt <- gr2dt(somatic_variants)[, .SD[1], by = c("seqnames", "start", "end")][, c(
+                  "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
+                  intersect(c("normal.ref", "normal.alt"), names(gr2dt(somatic_variants)))
+                ), with = FALSE]
+                germline_dt <- gr2dt(germline_variants)[, .SD[1], by = c("seqnames", "start", "end")][, c(
+                  "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
+                  intersect(c("normal.ref", "normal.alt"), names(gr2dt(germline_variants)))
+                ), with = FALSE]
+                het_pileups_dt <- gr2dt(het_pileups)[, .SD[1], by = c("seqnames", "start", "end")][, .(
+                  seqnames, start, end, strand, width, class,
+                  ref = ref.count.t,
+                  alt = alt.count.t,
+                  normal.ref = if ("ref.count.n" %in% names(gr2dt(het_pileups))) ref.count.n else NA,
+                  normal.alt = if ("alt.count.n" %in% names(gr2dt(het_pileups))) alt.count.n else NA
+                )]
+                
+                variants <- rbind(somatic_dt, germline_dt, het_pileups_dt, fill = TRUE) %>% dt2gr()
+                
+                if (!is.null(mask)) {
+                  variants <- gr.val(variants, mask, "blacklisted", na.rm = TRUE) %Q%
+                    (!is.na(blacklisted)) %Q%
+                    (blacklisted == FALSE) # Filter out blacklisted variants
+                }
+                
+                unique.variants <- variants[, c("class", "ref", "alt")] %>% gr.nochr() %Q%
+                  (!seqnames %in% c("Y", "MT")) %>% unique
+                
+                if (!is.null(dryclean.cov)) {
+                  unique.variants <- gr.val(unique.variants, dryclean.cov, "avg_basecov", na.rm = TRUE)
+                  unique.variants$ref_denoised <- unique.variants$ref * unique.variants$avg_basecov / (unique.variants$ref + unique.variants$alt)
+                  unique.variants$alt_denoised <- unique.variants$alt * unique.variants$avg_basecov / (unique.variants$ref + unique.variants$alt)
+                  
+                  unique.variants$major.count <- pmax(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
+                  unique.variants$minor.count <- pmin(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
+                  fields.to.carry <- c("ref_denoised", "alt_denoised")
+                } else {
+                  unique.variants$major.count <- pmax(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
+                  unique.variants$minor.count <- pmin(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
+                }
+                
+                m <- length(unique.variants$ref + unique.variants$alt)
+                sf <- sum(unique.variants$major.count + unique.variants$minor.count, na.rm = TRUE) / m
+                unique.variants$major.count <- unique.variants$major.count / sf
+                unique.variants$minor.count <- unique.variants$minor.count / sf
+                
+                ncn.vec <- rep(2, length(unique.variants))
+                
+                if (inferred_sex == "M") {
+                  if (verbose) message("Adjusting ncn for XY")
+                  ncn.vec[as.character(seqnames(unique.variants)) %in% c("X", "chrX", "23", "chr23", "Y", "chrY", "y")] <- 1
+                }
+                
+                values(unique.variants)$minor_constitutional_cn <- ncn.vec - 1
+                unique.variants <- gr.val(unique.variants, cn.gr, "cn", na.rm = TRUE)
+                
+                tau_hat <- mean(unique.variants$cn, na.rm = TRUE)
+                tau <- if (tau_in_gamma) ploidy else tau_hat
+                alpha <- purity
+                beta <- alpha / (alpha * ploidy + 2 * (1 - alpha))
+                gamma <- 2 * (1 - alpha) / (alpha * tau + 2 * (1 - alpha))
+                
+                if (verbose) message(paste0("average total CN of loci: ", tau_hat))
+                if (verbose) message(paste0("ploidy of tumor sample: ", ploidy))
+                if (verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
+                if (verbose) message("applying transformation")
+                
+                mcols(unique.variants)$major_gamma_coeff <- NA
+                mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "SOMATIC"] <- 2
+                mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
+                mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "HET"] <- 1
+                mcols(unique.variants)$minor_gamma_coeff <- NA
+                mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "SOMATIC"] <- 0
+                mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
+                mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "HET"] <- 1
+                
+                mcols(unique.variants)$ncn.add <- ifelse(
+                  mcols(unique.variants)$major_gamma_coeff > 2,
+                  mcols(unique.variants)$major_gamma_coeff - 1,
+                  0
+                )
+                
+                mcols(unique.variants)$major_snv_copies <-
+                  (2 * unique.variants$major.count -
+                     (gamma * (unique.variants$minor_constitutional_cn + unique.variants$ncn.add))) / (2 * beta)
+                
+                mcols(unique.variants)$minor_snv_copies <-
+                  (2 * unique.variants$minor.count -
+                     (gamma * unique.variants$minor_constitutional_cn * unique.variants$minor_gamma_coeff)) / (2 * beta)
+                
+                mcols(unique.variants)$total_snv_copies <-
+                  unique.variants$major_snv_copies + unique.variants$minor_snv_copies
+                
+                unique.variants$altered_copies <- ifelse(unique.variants$alt >= unique.variants$ref,
+                  unique.variants$major_snv_copies,
+                  unique.variants$minor_snv_copies
+                )
+                unique.variants$VAF <- unique.variants$alt / (unique.variants$ref + unique.variants$alt)
+                
+                somatic_variants <- gr.val(somatic_variants, unique.variants %Q% (class == "SOMATIC"), c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
+                
+                germline_variants <- gr.val(germline_variants, unique.variants %Q% (class == "GERMLINE"), c(fields.to.carry, "cn",
+                                                                                                      "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
+                
+                het_pileups <- gr.val(het_pileups, unique.variants %Q% (class == "HET"), c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
+                
+              } else if (modeltype == "separate") {
+                
+                if (verbose) message("Using separate processing model.")
+                
+                if (!is.na(somatic_snv_path) && !is.null(somatic_snv_path)) {
+
+                  if (verbose) message("Processing somatic variants (separate model using transform_snv).")
+                  
+                  somatic_variants <- transform_snv(
+                    vcf = somatic_snv,
+                    cn_gr = cn.gr,
+                    snpeff_path = snpeff_path,
+                    dryclean.cov = dryclean.cov,
+                    basecov_field = "avg_basecov",
+                    inferred_sex = inferred_sex,
+                    tumor_id = tumor_name,
+                    normal_id = normal_name,
+                    purity = purity,
+                    ploidy = ploidy,
+                    filterpass = filterpass, # Uses the main filterpass parameter
+                    verbose = verbose,
+                    tau_in_gamma = tau_in_gamma,
+                    mask = mask,
+                    major_gamma_coeff = 2, # As per original active code
+                    minor_gamma_coeff = 0  # As per original active code
+                  )
+                }
+                
+                if (!is.na(germline_snv_path) && !is.null(germline_snv_path)) {
+
+                  if (verbose) message("Processing germline variants (separate model using transform_snv).")
+
+                  germline_variants <- transform_snv(
+                    vcf = germline_snv,
+                    cn_gr = cn.gr,
+                    snpeff_path = snpeff_path,
+                    dryclean.cov = dryclean.cov,
+                    basecov_field = "avg_basecov",
+                    inferred_sex = inferred_sex,
+                    tumor_id = tumor_name,
+                    normal_id = normal_name,
+                    purity = purity,
+                    ploidy = ploidy,
+                    mask = mask,
+                    filterpass = TRUE, # Hardcoded TRUE as per original active code for germline
+                    verbose = verbose,
+                    tau_in_gamma = tau_in_gamma,
+                    major_gamma_coeff = 1, # As per original active code
+                    minor_gamma_coeff = 1  # As per original active code
+                  )
+                }
+                
+                if (!is.na(het_pileups_wgs_path) && !is.null(het_pileups_wgs_path)) {
+
+                  if (verbose) message("Processing heterozygous SNPs (separate model using transform_hets).")
+
+                  het_pileups <- transform_hets(
+                    hets = het_pileups_wgs,
+                    cn_gr = cn.gr,
+                    dryclean.cov = dryclean.cov,
+                    basecov_field = "avg_basecov",
+                    inferred_sex = inferred_sex,
+                    purity = purity,
+                    ploidy = ploidy,
+                    verbose = verbose,
+                    tau_in_gamma = tau_in_gamma,
+                    mask = mask
+                  )
+                }
+              } else {
+                stop(paste0("Invalid model_type specified: '", model_type, "'. Please choose 'unified' or 'separate'."))
+              }
+
+              return(list(
+                somatic_variants = somatic_variants,
+                germline_variants = germline_variants,
+                het_pileups = het_pileups
+              ))
+
+#' @title Preprocess inputs for multiplicity
+#' @description Helper function to preprocess and validate inputs for the main multiplicity function.
+#' @param somatic_snv Path to somatic SNV file.
+#' @param germline_snv Path to germline SNV file.
+#' @param het_pileups_wgs Path to het_pileups_wgs file.
+#' @param tumor_cbs Path to segmented drycleaned coverage file.
+#' @param tumor_dryclean Path to drycleaned coverage file.
+#' @param dryclean_field Specification of field in tumor_dryclean gRanges.
+#' @param jabba_rds Path to jabba file or gGraph object.
+#' @param mask Path to mask gRanges RDS file or gRanges object.
+#' @param inferred_sex Enum of ["M", "F"].
+#' @param read_size Estimated average read size.
+#' @param ploidy Ploidy of the sample.
+#' @param purity Purity of the sample.
+#' @param verbose Verbose output?
+#' @return A list containing preprocessed inputs:
+#'         somatic_snv, germline_snv, het_pileups_wgs, cn.gr,
+#'         dryclean.cov, inferred_sex, purity, ploidy, mask.
+#' @keywords internal
+preprocess_multiplicity_inputs <- function(somatic_snv,
+                       germline_snv,
+                       het_pileups_wgs,
+                       tumor_cbs,
+                       tumor_dryclean,
+                       dryclean_field,
+                       jabba_rds,
+                       mask,
+                       inferred_sex,
+                       read_size,
+                       ploidy,
+                       purity,
+                       verbose) {
+  ### if any filepaths are /dev/null, turn them into true NULL characters.
+  vars_to_normalize <- c("somatic_snv", "germline_snv", "het_pileups_wgs", "tumor_dryclean", "tumor_cbs")
+  for (var_name in vars_to_normalize) {
+  assign(var_name, normalize_path(get(var_name)))
+  }
+
+  if (verbose) {
     message("Starting preprocessing of inputs...")
-    }
+  }
 
-    if (is.null(somatic_snv) && is.null(germline_snv) && is.null(het_pileups_wgs)) {
+  if (is.null(somatic_snv) && is.null(germline_snv) && is.null(het_pileups_wgs)) {
     stop("Somatic VCF, Germline VCF, and/or HetSNPs file must be provided.")
-    }
-    
-    gg <- NULL
-    cn.gr <- NULL
-    jab <- NULL
-    
-    is_jabba_character <- is.character(jabba_rds)
-    is_jabba_len_one <- NROW(jabba_rds) == 1
-    is_jabba_null <- is.null(jabba_rds) || identical(jabba_rds, base::nullfile())
-    is_jabba_na <- is_jabba_len_one && (is.na(jabba_rds) || identical(jabba_rds, "NA"))
-    
-    if (!is_jabba_null && !is_jabba_na) {
-    if (verbose) message("Processing JaBbA input...")
-    is_jabba_existent <- is_jabba_character && is_jabba_len_one && file.exists(jabba_rds)
-    is_jabba_nonexistent <- is_jabba_character && is_jabba_len_one && !file.exists(jabba_rds)
-    is_jabba_invalid <- is_jabba_character && !is_jabba_len_one
+  }
 
-    if (is_jabba_nonexistent) {
-      stop("Path to JaBbA provided to 'jabba_rds' does not exist.")
-    } else if (is_jabba_invalid) {
-      stop("Path to jabba provided to 'jabba_rds' is a character but not length one.")
-    }
+  gg <- NULL
+  cn.gr <- NULL
+  jab <- NULL
 
-    is_jabba_rds <- is_jabba_existent && grepl("rds$", jabba_rds, ignore.case = TRUE)
-    is_jabba_list_like <- is.list(jabba_rds) && all(c("segstats", "junctions", "gtrack") %in% names(jabba_rds)) # Simplified check
-    is_jabba_ggraph <- inherits(jabba_rds, "gGraph")
+  is_jabba_character <- is.character(jabba_rds)
+  is_jabba_len_one <- NROW(jabba_rds) == 1
+  is_jabba_null <- is.null(jabba_rds) || identical(jabba_rds, base::nullfile())
+  is_jabba_na <- is_jabba_len_one && (is.na(jabba_rds) || identical(jabba_rds, "NA"))
 
-    if (is_jabba_rds || is_jabba_list_like) {
-      gg <- gGnome::gG(jabba = jabba_rds) 
-    } else if (is_jabba_ggraph) {
-      gg <- jabba_rds
-    } else if (is_jabba_existent) { # Catch other file types if existent but not RDS
-      stop("Path to jabba provided to 'jabba_rds' is an unsupported file type. Expecting an RDS, a gGraph object, or a list-like Jabba structure.")
-    } else if (!is_jabba_character) { # jabba_rds is an object but not gGraph or recognized list
-      stop("'jabba_rds' is an object of unrecognized type. Expecting a file path, a gGraph object, or a list-like Jabba structure.")
-    }
+  if (!is_jabba_null && !is_jabba_na) {
+  if (verbose) message("Processing JaBbA input...")
+  is_jabba_existent <- is_jabba_character && is_jabba_len_one && file.exists(jabba_rds)
+  is_jabba_nonexistent <- is_jabba_character && is_jabba_len_one && !file.exists(jabba_rds)
+  is_jabba_invalid <- is_jabba_character && !is_jabba_len_one
+
+  if (is_jabba_nonexistent) {
+    stop("Path to JaBbA provided to 'jabba_rds' does not exist.")
+  } else if (is_jabba_invalid) {
+    stop("Path to jabba provided to 'jabba_rds' is a character but not length one.")
+  }
+
+  is_jabba_rds <- is_jabba_existent && grepl("rds$", jabba_rds, ignore.case = TRUE)
+  is_jabba_list_like <- is.list(jabba_rds) && all(c("segstats", "junctions", "gtrack") %in% names(jabba_rds)) # Simplified check
+  is_jabba_ggraph <- inherits(jabba_rds, "gGraph")
+
+  if (is_jabba_rds || is_jabba_list_like) {
+    gg <- gGnome::gG(jabba = jabba_rds)
+  } else if (is_jabba_ggraph) {
+    gg <- jabba_rds
+  } else if (is_jabba_existent) { # Catch other file types if existent but not RDS
+    stop("Path to jabba provided to 'jabba_rds' is an unsupported file type. Expecting an RDS, a gGraph object, or a list-like Jabba structure.")
+  } else if (!is_jabba_character) { # jabba_rds is an object but not gGraph or recognized list
+    stop("'jabba_rds' is an object of unrecognized type. Expecting a file path, a gGraph object, or a list-like Jabba structure.")
+  }
 
 
-    if (is.null(gg)) {
-      stop("Failed to load or process jabba_rds into a gGraph object.")
-    }
-    
-    jab <- gUtils::dt2gr(gUtils::gr2dt(gg$nodes$gr)[seqnames == 23, seqnames := "X"][seqnames == 24, seqnames := "Y"])
-    GenomeInfoDb::seqlevelsStyle(jab) <- "NCBI"
-    cn.gr <- jab[as.logical(strand(jab) == "+")]
-    if (verbose) message("Successfully processed JaBbA graph!")
-    }
-    is_jabba_obj_present <- !is.null(gg) && !is.null(cn.gr)
+  if (is.null(gg)) {
+    stop("Failed to load or process jabba_rds into a gGraph object.")
+  }
 
-    if (is.null(ploidy)) {
-    if (!is_jabba_obj_present || is.null(gg$meta)) {
-      stop("ploidy not provided, and JaBbA object (gg) or its metadata (gg$meta) is not available to infer ploidy. Please provide ploidy.")
-    }
-    fetched_ploidy <- try(gg$meta[["ploidy"]], silent = TRUE) # More direct for lists
-    if (inherits(fetched_ploidy, "try-error") || is.null(fetched_ploidy)) {
-      stop("ploidy not provided, and could not be found or is NULL in gGraph 'meta' field. You must provide a ploidy solution.")
-    }
-    ploidy <- fetched_ploidy
-    }
-    if (is.null(purity)) {
-    if (!is_jabba_obj_present || is.null(gg$meta)) {
-      stop("purity not provided, and JaBbA object (gg) or its metadata (gg$meta) is not available to infer purity. Please provide purity.")
-    }
-    fetched_purity <- try(gg$meta[["purity"]], silent = TRUE)
-    if (inherits(fetched_purity, "try-error") || is.null(fetched_purity)) {
-      stop("purity not provided, and could not be found or is NULL in gGraph 'meta' field. You must provide a purity solution.")
-    }
-    purity <- fetched_purity
-    }
+  jab <- gUtils::dt2gr(gUtils::gr2dt(gg$nodes$gr)[seqnames == 23, seqnames := "X"][seqnames == 24, seqnames := "Y"])
+  GenomeInfoDb::seqlevelsStyle(jab) <- "NCBI"
+  cn.gr <- jab[as.logical(strand(jab) == "+")]
+  if (verbose) message("Successfully processed JaBbA graph!")
+  }
+  is_jabba_obj_present <- !is.null(gg) && !is.null(cn.gr)
 
-    read_size <- as.numeric(read_size)
+  if (is.null(ploidy)) {
+  if (!is_jabba_obj_present || is.null(gg$meta)) {
+    stop("ploidy not provided, and JaBbA object (gg) or its metadata (gg$meta) is not available to infer ploidy. Please provide ploidy.")
+  }
+  fetched_ploidy <- try(gg$meta[["ploidy"]], silent = TRUE) # More direct for lists
+  if (inherits(fetched_ploidy, "try-error") || is.null(fetched_ploidy)) {
+    stop("ploidy not provided, and could not be found or is NULL in gGraph 'meta' field. You must provide a ploidy solution.")
+  }
+  ploidy <- fetched_ploidy
+  }
+  if (is.null(purity)) {
+  if (!is_jabba_obj_present || is.null(gg$meta)) {
+    stop("purity not provided, and JaBbA object (gg) or its metadata (gg$meta) is not available to infer purity. Please provide purity.")
+  }
+  fetched_purity <- try(gg$meta[["purity"]], silent = TRUE)
+  if (inherits(fetched_purity, "try-error") || is.null(fetched_purity)) {
+    stop("purity not provided, and could not be found or is NULL in gGraph 'meta' field. You must provide a purity solution.")
+  }
+  purity <- fetched_purity
+  }
 
-    is_cov_character <- is.character(tumor_dryclean)
-    is_cov_len_one <- NROW(tumor_dryclean) == 1
-    is_cov_null <- is.null(tumor_dryclean) || identical(tumor_dryclean, base::nullfile())
-    is_cov_na <- is_cov_len_one && (is.na(tumor_dryclean) || identical(tumor_dryclean, "NA"))
-    dryclean.cov <- NULL
-    
-    if (!is_cov_null && !is_cov_na) {
-    if (verbose) message("Processing tumor dryclean coverage...")
-    is_cov_existent <- is_cov_character && is_cov_len_one && file.exists(tumor_dryclean)
-    is_cov_nonexistent <- is_cov_character && is_cov_len_one && !file.exists(tumor_dryclean)
-    is_cov_invalid <- is_cov_character && !is_cov_len_one
+  read_size <- as.numeric(read_size)
 
-    if (is_cov_nonexistent) {
-      stop("Path to coverage provided to 'tumor_dryclean' does not exist.")
-    } else if (is_cov_invalid) {
-      stop("Path to coverage provided to 'tumor_dryclean' is a character but not length 1.")
-    }
-    
-    current_dryclean_obj <- NULL
-    if (is_cov_existent && grepl("rds$", tumor_dryclean, ignore.case = TRUE)) {
-      current_dryclean_obj <- readRDS(tumor_dryclean) 
-    } else if (is_cov_existent) { # Assumed text file if not RDS
-      current_dryclean_obj <- data.table::fread(tumor_dryclean)
-    } else if (!is_cov_character) { # tumor_dryclean is already an object
-      current_dryclean_obj <- tumor_dryclean
-    } else { # Should not be reached if previous checks are correct
-      stop("Could not load tumor_dryclean input.")
-    }
+  is_cov_character <- is.character(tumor_dryclean)
+  is_cov_len_one <- NROW(tumor_dryclean) == 1
+  is_cov_null <- is.null(tumor_dryclean) || identical(tumor_dryclean, base::nullfile())
+  is_cov_na <- is_cov_len_one && (is.na(tumor_dryclean) || identical(tumor_dryclean, "NA"))
+  dryclean.cov <- NULL
 
-    if (inherits(current_dryclean_obj, "data.frame")) {
-      current_dryclean_obj <- gUtils::dt2gr(current_dryclean_obj)
-      GenomeInfoDb::seqlevelsStyle(current_dryclean_obj) <- "NCBI"
-    }
-    if (!inherits(current_dryclean_obj, "GRanges")) {
-      stop("Provided tumor_dryclean must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format.")
-    }
-    dryclean.cov <- current_dryclean_obj
-    
-    if (!dryclean_field %in% names(mcols(dryclean.cov))) {
-      stop(paste0("dryclean_field '", dryclean_field, "' not found in tumor_dryclean metadata columns. Available columns: ", paste(names(mcols(dryclean.cov)), collapse=", ")))
-    }
-    cov.vector <- mcols(dryclean.cov)[[dryclean_field]]
-    mcols(dryclean.cov) <- NULL # Clear mcols before adding new ones
-    mcols(dryclean.cov)$bincov <- cov.vector
-    mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
-    }
-    is_cov_obj_present <- !is.null(dryclean.cov)
+  if (!is_cov_null && !is_cov_na) {
+  if (verbose) message("Processing tumor dryclean coverage...")
+  is_cov_existent <- is_cov_character && is_cov_len_one && file.exists(tumor_dryclean)
+  is_cov_nonexistent <- is_cov_character && is_cov_len_one && !file.exists(tumor_dryclean)
+  is_cov_invalid <- is_cov_character && !is_cov_len_one
 
-    is_seg_character <- is.character(tumor_cbs)
-    is_seg_len_one <- NROW(tumor_cbs) == 1
-    is_seg_null <- is.null(tumor_cbs) || identical(tumor_cbs, base::nullfile())
-    is_seg_na <- is_seg_len_one && (is.na(tumor_cbs) || identical(tumor_cbs, "NA"))
-    cbs.cov.gr <- NULL # Use a distinct name for CBS GRanges
-    cbs.vector <- NULL
+  if (is_cov_nonexistent) {
+    stop("Path to coverage provided to 'tumor_dryclean' does not exist.")
+  } else if (is_cov_invalid) {
+    stop("Path to coverage provided to 'tumor_dryclean' is a character but not length 1.")
+  }
 
-    is_both_jabba_and_cov_present <- is_jabba_obj_present && is_cov_obj_present
+  current_dryclean_obj <- NULL
+  if (is_cov_existent && grepl("rds$", tumor_dryclean, ignore.case = TRUE)) {
+    current_dryclean_obj <- readRDS(tumor_dryclean)
+  } else if (is_cov_existent) { # Assumed text file if not RDS
+    current_dryclean_obj <- data.table::fread(tumor_dryclean)
+  } else if (!is_cov_character) { # tumor_dryclean is already an object
+    current_dryclean_obj <- tumor_dryclean
+  } else { # Should not be reached if previous checks are correct
+    stop("Could not load tumor_dryclean input.")
+  }
 
-    if (is_both_jabba_and_cov_present) {
-    if (verbose) message("Using JaBbA segmentation and binned coverage to get segment level mean coverage.")
-    if (!is.null(cn.gr) && !is.null(dryclean.cov) && "bincov" %in% names(mcols(dryclean.cov))) {
-      seg_stats_result <- JaBbA:::segstats(cn.gr, dryclean.cov, field = "bincov")
-      cbs.cov.gr <- cn.gr 
-      mcols(cbs.cov.gr) <- cbind(mcols(cn.gr), mcols(seg_stats_result)) # Combine metadata carefully
-      cbs.vector <- cbs.cov.gr$mean
+  if (inherits(current_dryclean_obj, "data.frame")) {
+    current_dryclean_obj <- gUtils::dt2gr(current_dryclean_obj)
+    GenomeInfoDb::seqlevelsStyle(current_dryclean_obj) <- "NCBI"
+  }
+  if (!inherits(current_dryclean_obj, "GRanges")) {
+    stop("Provided tumor_dryclean must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format.")
+  }
+  dryclean.cov <- current_dryclean_obj
+
+  if (!dryclean_field %in% names(mcols(dryclean.cov))) {
+    stop(paste0("dryclean_field '", dryclean_field, "' not found in tumor_dryclean metadata columns. Available columns: ", paste(names(mcols(dryclean.cov)), collapse = ", ")))
+  }
+  cov.vector <- mcols(dryclean.cov)[[dryclean_field]]
+  mcols(dryclean.cov) <- NULL # Clear mcols before adding new ones
+  mcols(dryclean.cov)$bincov <- cov.vector
+  mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
+  }
+  is_cov_obj_present <- !is.null(dryclean.cov)
+
+  is_seg_character <- is.character(tumor_cbs)
+  is_seg_len_one <- NROW(tumor_cbs) == 1
+  is_seg_null <- is.null(tumor_cbs) || identical(tumor_cbs, base::nullfile())
+  is_seg_na <- is_seg_len_one && (is.na(tumor_cbs) || identical(tumor_cbs, "NA"))
+  cbs.cov.gr <- NULL # Use a distinct name for CBS GRanges
+  cbs.vector <- NULL
+
+  is_both_jabba_and_cov_present <- is_jabba_obj_present && is_cov_obj_present
+
+  if (is_both_jabba_and_cov_present) {
+  if (verbose) message("Using JaBbA segmentation and binned coverage to get segment level mean coverage.")
+  if (!is.null(cn.gr) && !is.null(dryclean.cov) && "bincov" %in% names(mcols(dryclean.cov))) {
+    seg_stats_result <- JaBbA:::segstats(cn.gr, dryclean.cov, field = "bincov")
+    cbs.cov.gr <- cn.gr
+    mcols(cbs.cov.gr) <- cbind(mcols(cn.gr), mcols(seg_stats_result)) # Combine metadata carefully
+    cbs.vector <- cbs.cov.gr$mean
+  } else {
+    if (verbose) message("Inputs cn.gr or dryclean.cov (with bincov) are not suitable for JaBbA:::segstats. Skipping this step.")
+  }
+  }
+
+  if (!is_both_jabba_and_cov_present && (!is_seg_null && !is_seg_na)) {
+  if (verbose) message("Processing tumor CBS segmentation...")
+  is_seg_existent <- is_seg_character && is_seg_len_one && file.exists(tumor_cbs)
+  is_seg_nonexistent <- is_seg_character && is_seg_len_one && !file.exists(tumor_cbs)
+  is_seg_invalid <- is_seg_character && !is_seg_len_one
+
+  if (is_seg_nonexistent) {
+    stop("Path to segmentation provided to 'tumor_cbs' does not exist.")
+  } else if (is_seg_invalid) {
+    stop("Path to segmentation provided to 'tumor_cbs' is invalid (not length one character).")
+  }
+
+  current_cbs_obj <- NULL
+  if (is_seg_existent && grepl("rds$", tumor_cbs, ignore.case = TRUE)) {
+    current_cbs_obj <- readRDS(tumor_cbs)
+  } else if (is_seg_existent) {
+    current_cbs_obj <- data.table::fread(tumor_cbs)
+  } else if (!is_seg_character) {
+    current_cbs_obj <- tumor_cbs
+  } else {
+    stop("Could not load tumor_cbs input.")
+  }
+
+  if (inherits(current_cbs_obj, "data.frame")) {
+    current_cbs_obj <- gUtils::dt2gr(current_cbs_obj)
+    GenomeInfoDb::seqlevelsStyle(current_cbs_obj) <- "NCBI"
+  }
+  if (!inherits(current_cbs_obj, "GRanges")) {
+    stop("Provided tumor_cbs must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format.")
+  }
+  cbs.cov.gr <- current_cbs_obj
+
+  seg_mean_val <- NULL
+  if ("seg.mean" %in% names(mcols(cbs.cov.gr))) {
+    seg_mean_val <- mcols(cbs.cov.gr)[["seg.mean"]]
+  }
+
+  if (!is.null(seg_mean_val)) {
+    cbs.vector <- seg_mean_val
+    if (verbose) message("Assuming segmentation seg.mean is log-scaled, converting to linear.")
+    cbs.vector <- exp(cbs.vector)
+  } else if (is_cov_obj_present) { # seg.mean not found, but binned coverage exists
+    if (verbose) message("seg.mean not found in tumor_cbs, recomputing segment means using provided binned coverage on CBS segments.")
+    if (!is.null(cbs.cov.gr) && !is.null(dryclean.cov) && "bincov" %in% names(mcols(dryclean.cov))) {
+    seg_stats_result <- JaBbA:::segstats(cbs.cov.gr, dryclean.cov, field = "bincov")
+    mcols(cbs.cov.gr) <- cbind(mcols(cbs.cov.gr), mcols(seg_stats_result))
+    cbs.vector <- cbs.cov.gr$mean
     } else {
-      if(verbose) message("Inputs cn.gr or dryclean.cov (with bincov) are not suitable for JaBbA:::segstats. Skipping this step.")
+    if (verbose) message("Inputs cbs.cov.gr or dryclean.cov (with bincov) are not suitable for JaBbA:::segstats. Cannot recompute segment means for CBS.")
     }
-    }
+  } else { # seg.mean not found, and no binned coverage to recompute
+    stop("No seg.mean values available in tumor_cbs, and no binned coverage (tumor_dryclean) provided to recompute.")
+  }
 
-    if (!is_both_jabba_and_cov_present && (!is_seg_null && !is_seg_na)) {
-    if (verbose) message("Processing tumor CBS segmentation...")
-    is_seg_existent <- is_seg_character && is_seg_len_one && file.exists(tumor_cbs)
-    is_seg_nonexistent <- is_seg_character && is_seg_len_one && !file.exists(tumor_cbs)
-    is_seg_invalid <- is_seg_character && !is_seg_len_one
-    
-    if (is_seg_nonexistent) {
-      stop("Path to segmentation provided to 'tumor_cbs' does not exist.")
-    } else if (is_seg_invalid) {
-      stop("Path to segmentation provided to 'tumor_cbs' is invalid (not length one character).")
-    }
-    
-    current_cbs_obj <- NULL
-    if (is_seg_existent && grepl("rds$", tumor_cbs, ignore.case = TRUE)) {
-      current_cbs_obj <- readRDS(tumor_cbs) 
-    } else if (is_seg_existent) {
-      current_cbs_obj <- data.table::fread(tumor_cbs)
-    } else if (!is_seg_character) {
-      current_cbs_obj <- tumor_cbs
-    } else {
-      stop("Could not load tumor_cbs input.")
-    }
-    
-    if (inherits(current_cbs_obj, "data.frame")) {
-      current_cbs_obj <- gUtils::dt2gr(current_cbs_obj)
-      GenomeInfoDb::seqlevelsStyle(current_cbs_obj) <- "NCBI"
-    }
-    if (!inherits(current_cbs_obj, "GRanges")) {
-      stop("Provided tumor_cbs must be a path to a file coercible to GRanges, or a GRanges/tabular ranged format.")
-    }
-    cbs.cov.gr <- current_cbs_obj
-    
-    seg_mean_val <- NULL
-    if ("seg.mean" %in% names(mcols(cbs.cov.gr))) {
-      seg_mean_val <- mcols(cbs.cov.gr)[["seg.mean"]]
-    }
-    
-    if (!is.null(seg_mean_val)) {
-      cbs.vector <- seg_mean_val
-      if (verbose) message("Assuming segmentation seg.mean is log-scaled, converting to linear.")
-      cbs.vector <- exp(cbs.vector)
-    } else if (is_cov_obj_present) { # seg.mean not found, but binned coverage exists
-      if (verbose) message("seg.mean not found in tumor_cbs, recomputing segment means using provided binned coverage on CBS segments.")
-      if (!is.null(cbs.cov.gr) && !is.null(dryclean.cov) && "bincov" %in% names(mcols(dryclean.cov))) {
-        seg_stats_result <- JaBbA:::segstats(cbs.cov.gr, dryclean.cov, field = "bincov")
-        mcols(cbs.cov.gr) <- cbind(mcols(cbs.cov.gr), mcols(seg_stats_result))
-        cbs.vector <- cbs.cov.gr$mean
-      } else {
-        if(verbose) message("Inputs cbs.cov.gr or dryclean.cov (with bincov) are not suitable for JaBbA:::segstats. Cannot recompute segment means for CBS.")
-      }
-    } else { # seg.mean not found, and no binned coverage to recompute
-      stop("No seg.mean values available in tumor_cbs, and no binned coverage (tumor_dryclean) provided to recompute.")
-    }
+  if (!is_jabba_obj_present && !is.null(cbs.cov.gr) && !is.null(cbs.vector)) {
+    if (verbose) message("Deriving cn.gr from CBS segmentation as JaBbA was not provided/processed.")
+    temp_mcols <- mcols(cbs.cov.gr) # Preserve original mcols
+    mcols(cbs.cov.gr)$cov_val <- cbs.vector # Temporary column for rel2abs
 
-    if (!is_jabba_obj_present && !is.null(cbs.cov.gr) && !is.null(cbs.vector)) {
-      if (verbose) message("Deriving cn.gr from CBS segmentation as JaBbA was not provided/processed.")
-      temp_mcols <- mcols(cbs.cov.gr) # Preserve original mcols
-      mcols(cbs.cov.gr)$cov_val <- cbs.vector # Temporary column for rel2abs
-      
-      # rel2abs returns a GRanges with new 'cn' column
-      abs_cn_gr <- skitools::rel2abs(cbs.cov.gr, "cov_val", purity = purity, ploidy = ploidy)
-      
-      cn.gr <- abs_cn_gr # This now has 'cn'
-      jab <- cn.gr # jab is used for consistency if Jabba was primary source
-      # mcols(cbs.cov.gr) <- temp_mcols # Restore original mcols if needed, or select specific ones
-      is_jabba_obj_present <- TRUE # Mark as present because cn.gr is now derived
-    }
-    }
+    # rel2abs returns a GRanges with new 'cn' column
+    abs_cn_gr <- skitools::rel2abs(cbs.cov.gr, "cov_val", purity = purity, ploidy = ploidy)
 
-    is_seg_obj_processed <- !is.null(cbs.cov.gr) && !is.null(cbs.vector)
-    if (is_seg_obj_processed) {
-    if (verbose) message("Overriding dryclean.cov with processed CBS data.")
-    # Create a new GRanges for the tiled coverage from CBS means
-    tiled_cbs_gr <- NULL
-    valid_seqlengths <- !is.null(seqlengths(cbs.cov.gr)) && all(!is.na(seqlengths(cbs.cov.gr))) && all(is.finite(seqlengths(cbs.cov.gr)))
-    
-    if (valid_seqlengths) {
-      tiled_cbs_gr <- gUtils::gr.tile(seqlengths(cbs.cov.gr), 1000)
-      
-      # For gr.val, ensure cbs.cov.gr has only the 'bincov' (which is cbs.vector)
-      temp_val_gr <- cbs.cov.gr
-      mcols(temp_val_gr) <- S4Vectors::DataFrame(bincov = cbs.vector) # Use segment means as bincov
-      
-      tiled_cbs_gr <- gUtils::gr.val(tiled_cbs_gr, temp_val_gr, "bincov")
-      tiled_cbs_gr$bincov[is.na(tiled_cbs_gr$bincov)] <- 0
-      tiled_cbs_gr$avg_basecov <- tiled_cbs_gr$bincov * 2 * read_size / width(tiled_cbs_gr)
-    } else {
-      if (verbose) message("Cannot tile CBS coverage due to missing or invalid seqlengths. Using segment-level CBS data directly for dryclean.cov override.")
-      # Fallback: use the segment-level cbs.cov.gr, ensuring it has bincov and avg_basecov
-      tiled_cbs_gr <- cbs.cov.gr 
-      mcols(tiled_cbs_gr)$bincov <- cbs.vector # Ensure bincov is the segment mean
-      mcols(tiled_cbs_gr)$avg_basecov <- tiled_cbs_gr$bincov * 2 * read_size / width(tiled_cbs_gr)
-    }
-    
-    if (is_cov_obj_present && verbose) {
-      message("Provided CBS segmentation is superseding binned coverage from tumor_dryclean.")
-    }
-    dryclean.cov <- tiled_cbs_gr
-    is_cov_obj_present <- TRUE # dryclean.cov is now set from CBS
-    }
-    
-    if (is.null(cn.gr)){
-      stop("cn.gr could not be derived from jabba_rds or tumor_cbs. This is required for multiplicity calculations.")
-    }
-    if (!is_cov_obj_present && verbose && (!is.null(somatic_snv) || !is.null(germline_snv) || !is.null(het_pileups_wgs))) {
-      message("dryclean.cov is not available. SNV/Het count denoising/rescaling will be skipped.")
-    }
+    cn.gr <- abs_cn_gr # This now has 'cn'
+    jab <- cn.gr # jab is used for consistency if Jabba was primary source
+    # mcols(cbs.cov.gr) <- temp_mcols # Restore original mcols if needed, or select specific ones
+    is_jabba_obj_present <- TRUE # Mark as present because cn.gr is now derived
+  }
+  }
 
-    if (!(is.na(mask) || is.null(mask))) {
+  is_seg_obj_processed <- !is.null(cbs.cov.gr) && !is.null(cbs.vector)
+  if (is_seg_obj_processed) {
+  if (verbose) message("Overriding dryclean.cov with processed CBS data.")
+  # Create a new GRanges for the tiled coverage from CBS means
+  tiled_cbs_gr <- NULL
+  valid_seqlengths <- !is.null(seqlengths(cbs.cov.gr)) && all(!is.na(seqlengths(cbs.cov.gr))) && all(is.finite(seqlengths(cbs.cov.gr)))
+
+  if (valid_seqlengths) {
+    tiled_cbs_gr <- gUtils::gr.tile(seqlengths(cbs.cov.gr), 1000)
+
+    # For gr.val, ensure cbs.cov.gr has only the 'bincov' (which is cbs.vector)
+    temp_val_gr <- cbs.cov.gr
+    mcols(temp_val_gr) <- S4Vectors::DataFrame(bincov = cbs.vector) # Use segment means as bincov
+
+    tiled_cbs_gr <- gUtils::gr.val(tiled_cbs_gr, temp_val_gr, "bincov")
+    tiled_cbs_gr$bincov[is.na(tiled_cbs_gr$bincov)] <- 0
+    tiled_cbs_gr$avg_basecov <- tiled_cbs_gr$bincov * 2 * read_size / width(tiled_cbs_gr)
+  } else {
+    if (verbose) message("Cannot tile CBS coverage due to missing or invalid seqlengths. Using segment-level CBS data directly for dryclean.cov override.")
+    # Fallback: use the segment-level cbs.cov.gr, ensuring it has bincov and avg_basecov
+    tiled_cbs_gr <- cbs.cov.gr
+    mcols(tiled_cbs_gr)$bincov <- cbs.vector # Ensure bincov is the segment mean
+    mcols(tiled_cbs_gr)$avg_basecov <- tiled_cbs_gr$bincov * 2 * read_size / width(tiled_cbs_gr)
+  }
+
+  if (is_cov_obj_present && verbose) {
+    message("Provided CBS segmentation is superseding binned coverage from tumor_dryclean.")
+  }
+  dryclean.cov <- tiled_cbs_gr
+  is_cov_obj_present <- TRUE # dryclean.cov is now set from CBS
+  }
+
+  if (is.null(cn.gr)) {
+    stop("cn.gr could not be derived from jabba_rds or tumor_cbs. This is required for multiplicity calculations.")
+  }
+  if (!is_cov_obj_present && verbose && (!is.null(somatic_snv) || !is.null(germline_snv) || !is.null(het_pileups_wgs))) {
+    message("dryclean.cov is not available. SNV/Het count denoising/rescaling will be skipped.")
+  }
+
+  if (!(is.na(mask) || is.null(mask))) {
     if (is.character(mask) && file.exists(mask)) {
       if (verbose) message("Loading mask from RDS file: ", mask)
       mask <- readRDS(mask)
@@ -354,12 +628,12 @@ multiplicity <- function(somatic_snv = NULL,
       warning("Mask is provided but is not a valid file path to an RDS or a GRanges object. It will be ignored.")
       mask <- NULL
     }
-    }
+  }
 
-    if (is.na(inferred_sex)) {
+  if (is.na(inferred_sex)) {
     if (!is.null(cn.gr) && "cn" %in% names(mcols(cn.gr))) {
       ncn.x <- gUtils::gr2dt(cn.gr)[
-        (seqnames == "X" | seqnames == "chrX" | seqnames == "23" | seqnames == "chr23"), 
+        (seqnames == "X" | seqnames == "chrX" | seqnames == "23" | seqnames == "chr23"),
         stats::weighted.mean(cn, w = width, na.rm = TRUE) # Use width calculation robustly
       ]
       if (verbose) message("Mean CN of X for sex inference: ", round(ncn.x, 2))
@@ -375,313 +649,35 @@ multiplicity <- function(somatic_snv = NULL,
     } else {
       warning("cn.gr (with 'cn' column) not available for sex inference. Please provide 'inferred_sex'. Inferred_sex remains NA.")
     }
-    } else if (grepl("^m", inferred_sex, ignore.case = TRUE)) {
+  } else if (grepl("^m", inferred_sex, ignore.case = TRUE)) {
     inferred_sex <- "M"
     if (verbose) message("Sex provided: XY")
-    } else if (grepl("^f", inferred_sex, ignore.case = TRUE)) {
+  } else if (grepl("^f", inferred_sex, ignore.case = TRUE)) {
     inferred_sex <- "F"
     if (verbose) message("Sex provided: XX")
-    } else {
+  } else {
     if (verbose && !is.na(inferred_sex)) { # Provided but not M/F/NA
       message(paste0("Provided 'inferred_sex' (", inferred_sex, ") is not 'M', 'F', or NA. Attempting to proceed, but this may cause issues."))
     } else if (verbose && is.na(inferred_sex)) { # Was NA and could not be inferred
       message("Sex could not be inferred and was not explicitly M/F. Proceeding with 'inferred_sex' as NA.")
     }
-    }
-    if (verbose) message("Preprocessing of inputs complete.")
-    
-    return(list(
-    somatic_snv = somatic_snv,
-    germline_snv = germline_snv,
-    het_pileups_wgs = het_pileups_wgs,
-    cn.gr = cn.gr,
-    dryclean.cov = dryclean.cov,
-    inferred_sex = inferred_sex,
-    purity = purity,
-    ploidy = ploidy,
-    mask = mask
-    ))
   }
+  if (verbose) message("Preprocessing of inputs complete.")
 
-  # Preprocess inputs
-  preprocessed_inputs <- preprocess_multiplicity_inputs(
-    somatic_snv = somatic_snv,
-    germline_snv = germline_snv,
-    het_pileups_wgs = het_pileups_wgs,
-    tumor_cbs = tumor_cbs,
-    tumor_dryclean = tumor_dryclean,
-    dryclean_field = dryclean_field,
-    jabba_rds = jabba_rds, 
-    mask = mask,
-    inferred_sex = inferred_sex,
-    read_size = read_size,
-    ploidy = ploidy,
-    purity = purity,
-    verbose = verbose
+  return(
+    list(
+      somatic_snv = somatic_snv,
+      germline_snv = germline_snv,
+      het_pileups_wgs = het_pileups_wgs,
+      cn.gr = cn.gr,
+      dryclean.cov = dryclean.cov,
+      inferred_sex = inferred_sex,
+      purity = purity,
+      ploidy = ploidy,
+      mask = mask
+    )
   )
-
-  somatic_variants <- NULL
-  germline_variants <- NULL
-  het_pileups <- NULL
-
-  # This code block assumes a new parameter `model_type` (e.g., "unified" or "separate")
-  # has been added to the `multiplicity` function signature.
-  # It also assumes `preprocessed_inputs` is available from `preprocess_multiplicity_inputs()`.
-
-  # Retrieve necessary values from preprocessed_inputs and function arguments
-  somatic_snv_path <- preprocessed_inputs$somatic_snv
-  germline_snv_path <- preprocessed_inputs$germline_snv
-  het_pileups_wgs_path <- preprocessed_inputs$het_pileups_wgs
-  cn.gr_val <- preprocessed_inputs$cn.gr
-  dryclean.cov_val <- preprocessed_inputs$dryclean.cov
-  inferred_sex_val <- preprocessed_inputs$inferred_sex
-  purity_val <- preprocessed_inputs$purity
-  ploidy_val <- preprocessed_inputs$ploidy
-  mask_val <- preprocessed_inputs$mask
-  # tumor_name, normal_name, snpeff_path, filterpass, tau_in_gamma, verbose are from the parent function's scope.
-  browser()
-
-  if (modeltype == "unified") {
-    if (verbose) message("Using unified processing model.")
-
-    if (!is.na(somatic_snv_path) && !is.null(somatic_snv_path)) {
-      if (verbose) message("Processing somatic variants (unified model using parsesnpeff).")
-      somatic_variants <- parsesnpeff(
-        vcf = somatic_snv_path,
-        snpeff_path = snpeff_path,
-        coding_alt_only = FALSE, # As per original commented-out code
-        filterpass = filterpass, # Uses the main filterpass parameter
-        tumor_id = tumor_name,
-        normal_id = normal_name,
-        keepfile = FALSE,
-        altpipe = TRUE,
-        verbose = verbose
-      )
-    }
-
-    if (!is.na(germline_snv_path) && !is.null(germline_snv_path)) {
-      if (verbose) message("Processing germline variants (unified model using parsesnpeff).")
-      germline_variants <- parsesnpeff(
-        vcf = germline_snv_path,
-        snpeff_path = snpeff_path,
-        coding_alt_only = FALSE, # As per original commented-out code
-        filterpass = filterpass, # Uses the main filterpass parameter
-        tumor_id = tumor_name,
-        normal_id = normal_name,
-        keepfile = FALSE,
-        altpipe = TRUE,
-        verbose = verbose
-      )
-    }
-
-    if (!is.na(het_pileups_wgs_path) && !is.null(het_pileups_wgs_path)) {
-      if (verbose) message("Processing heterozygous SNPs (unified model - basic load).")
-      if (file.exists(het_pileups_wgs_path)) {
-        # Assuming het_pileups_wgs_path is a file to be read by fread and converted
-        het_data <- data.table::fread(het_pileups_wgs_path)
-        if (inherits(het_data, "data.frame")) {
-            het_pileups <- gUtils::dt2gr(het_data) # Ensure gUtils is available
-        } else {
-            if (verbose) message("Loaded het_pileups data is not a data.frame, cannot convert to GRanges.")
-            het_pileups <- NULL
-        }
-        if (!is.null(het_pileups) && !inherits(het_pileups, "GRanges")) {
-            warning("Failed to convert het_pileups to GRanges in unified model.")
-            het_pileups <- NULL
-        }
-      } else {
-        if (verbose) message("Het pileups file not found for unified model: ", het_pileups_wgs_path)
-        het_pileups <- NULL
-      }
-    }
-
-    names(somatic_variants) <- NULL
-    names(germline_variants) <- NULL
-    names(het_pileups) <- NULL
-
-    mcols(somatic_variants)$class <- "SOMATIC"
-    mcols(germline_variants)$class <- "GERMLINE"
-    mcols(het_pileups)$class <- "HET"
-    
-    somatic_dt <- gr2dt(somatic_variants)[, .SD[1], by = c("seqnames", "start", "end")][, c("seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
-                          intersect(c("normal.ref", "normal.alt"), names(gr2dt(somatic_variants)))), with = FALSE]
-    germline_dt <- gr2dt(germline_variants)[, .SD[1], by = c("seqnames", "start", "end")][, c("seqnames", "start", "end", "strand", "width", "class", "ref", "alt", 
-                          intersect(c("normal.ref", "normal.alt"), names(gr2dt(germline_variants)))), with = FALSE]
-    het_pileups_dt <- gr2dt(het_pileups)[, .SD[1], by = c("seqnames", "start", "end")][, .(
-      seqnames, start, end, strand, width, class,
-      ref = ref.count.t,
-      alt = alt.count.t,
-      normal.ref = if ("ref.count.n" %in% names(gr2dt(het_pileups))) ref.count.n else NA,
-      normal.alt = if ("alt.count.n" %in% names(gr2dt(het_pileups))) alt.count.n else NA
-    )]
-
-    variants <- rbind(somatic_dt, germline_dt, het_pileups_dt, fill = TRUE) %>% dt2gr()
-
-    if(!is.null(mask_val)){
-      variants <- gr.val(variants, mask_val, "blacklisted", na.rm = T) %Q%
-        (!is.na(blacklisted)) %Q%
-        (blacklisted == FALSE) # Filter out blacklisted variants
-    }
-
-    unique.variants <- variants[, c("class", "ref", "alt")] %>% gr.nochr() %Q%
-      (!seqnames %in% c("Y", "MT")) %>% unique
-
-    if(!is.null(dryclean.cov_val)){
-      unique.variants <- gr.val(unique.variants, dryclean.cov_val, "avg_basecov", na.rm = TRUE)
-      unique.variants$ref_denoised <- unique.variants$ref * unique.variants$avg_basecov / (unique.variants$ref + unique.variants$alt)
-      unique.variants$alt_denoised <- unique.variants$alt * unique.variants$avg_basecov / (unique.variants$ref + unique.variants$alt)
-
-      unique.variants$major.count <- pmax(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
-      unique.variants$minor.count <- pmin(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
-      fields.to.carry <- c("ref_denoised", "alt_denoised")
-    } else {
-      unique.variants$major.count <- pmax(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
-      unique.variants$minor.count <- pmin(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
-    }
-
-    m <- length(unique.variants$ref + unique.variants$alt)
-    sf <- sum(unique.variants$major.count + unique.variants$minor.count, na.rm = TRUE) / m
-    unique.variants$major.count <- unique.variants$major.count / sf
-    unique.variants$minor.count <- unique.variants$minor.count / sf
-
-    ncn.vec <- rep(2, length(unique.variants))
-
-    if (inferred_sex_val == "M") {
-      if (verbose) message("Adjusting ncn for XY")
-      ncn.vec[as.character(seqnames(unique.variants)) %in% c("X", "chrX", "23", "chr23", "Y", "chrY", "y")] <- 1
-    }
-
-    values(unique.variants)$minor_constitutional_cn <- ncn.vec - 1
-    unique.variants <- gr.val(unique.variants, cn.gr_val, "cn", na.rm = TRUE)
-
-    tau_hat <- mean(unique.variants$cn, na.rm = TRUE)
-    tau <- if (tau_in_gamma) ploidy_val else tau_hat
-    alpha <- purity_val
-    
-    beta <- alpha / (alpha * ploidy_val + 2 * (1 - alpha))
-    gamma <- 2 * (1 - alpha) / (alpha * tau + 2 * (1 - alpha))
-
-    if (verbose) message(paste0("average total CN of loci: ", tau_hat))
-    if (verbose) message(paste0("ploidy of tumor sample: ", ploidy_val))
-    if (verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
-    if (verbose) message("applying transformation")
-
-    mcols(unique.variants)$major_gamma_coeff <- NA
-    mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "SOMATIC"] <- 2
-    mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
-    mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "HET"] <- 1
-    mcols(unique.variants)$minor_gamma_coeff <- NA
-    mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "SOMATIC"] <- 0
-    mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
-    mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "HET"] <- 1
-
-    mcols(unique.variants)$ncn.add <- ifelse(
-      mcols(unique.variants)$major_gamma_coeff > 2,
-      mcols(unique.variants)$major_gamma_coeff - 1,
-      0
-    )
-
-    mcols(unique.variants)$major_snv_copies <-
-      (2 * unique.variants$major.count -
-        (gamma * (unique.variants$minor_constitutional_cn + unique.variants$ncn.add))) / (2 * beta)
-
-    mcols(unique.variants)$minor_snv_copies <-
-      (2 * unique.variants$minor.count -
-        (gamma * unique.variants$minor_constitutional_cn * unique.variants$minor_gamma_coeff)) / (2 * beta)        
-
-    mcols(unique.variants)$total_snv_copies <-
-      unique.variants$major_snv_copies + unique.variants$minor_snv_copies
-
-    unique.variants$altered_copies <- ifelse(unique.variants$alt >= unique.variants$ref,
-      unique.variants$major_snv_copies,
-      unique.variants$minor_snv_copies
-    )
-    unique.variants$VAF <- unique.variants$alt / (unique.variants$ref + unique.variants$alt)
-
-    somatic_variants <- gr.val(somatic_variants, unique.variants %Q% (class == "SOMATIC"), c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
-    
-    germline_variants <- gr.val(germline_variants, unique.variants %Q% (class == "GERMLINE"), c(fields.to.carry, "cn",
-    "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
-
-    het_pileups <- gr.val(het_pileups, unique.variants %Q% (class == "HET"), c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
-
-
-  } else if (modeltype == "separate") {
-    if (verbose) message("Using separate processing model.")
-
-    if (!is.na(somatic_snv_path) && !is.null(somatic_snv_path)) {
-      if (verbose) message("Processing somatic variants (separate model using transform_snv).")
-
-      somatic_variants <- transform_snv(
-        vcf = somatic_snv_path,
-        cn_gr = cn.gr_val,
-        snpeff_path = snpeff_path,
-        dryclean.cov = dryclean.cov_val,
-        basecov_field = "avg_basecov",
-        inferred_sex = inferred_sex_val,
-        tumor_id = tumor_name,
-        normal_id = normal_name,
-        purity = purity_val,
-        ploidy = ploidy_val,
-        filterpass = filterpass, # Uses the main filterpass parameter
-        verbose = verbose,
-        tau_in_gamma = tau_in_gamma,
-        mask = mask_val,
-        major_gamma_coeff = 2, # As per original active code
-        minor_gamma_coeff = 0  # As per original active code
-      )
-    }
-
-    if (!is.na(germline_snv_path) && !is.null(germline_snv_path)) {
-      if (verbose) message("Processing germline variants (separate model using transform_snv).")
-
-      germline_variants <- transform_snv(
-        vcf = germline_snv_path,
-        cn_gr = cn.gr_val,
-        snpeff_path = snpeff_path,
-        dryclean.cov = dryclean.cov_val,
-        basecov_field = "avg_basecov",
-        inferred_sex = inferred_sex_val,
-        tumor_id = tumor_name,
-        normal_id = normal_name,
-        purity = purity_val,
-        ploidy = ploidy_val,
-        mask = mask_val,
-        filterpass = TRUE, # Hardcoded TRUE as per original active code for germline
-        verbose = verbose,
-        tau_in_gamma = tau_in_gamma,
-        major_gamma_coeff = 1, # As per original active code
-        minor_gamma_coeff = 1  # As per original active code
-      )
-    }
-
-    if (!is.na(het_pileups_wgs_path) && !is.null(het_pileups_wgs_path)) {
-      if (verbose) message("Processing heterozygous SNPs (separate model using transform_hets).")
-
-      het_pileups <- transform_hets(
-        hets = het_pileups_wgs_path,
-        cn_gr = cn.gr_val,
-        dryclean.cov = dryclean.cov_val,
-        basecov_field = "avg_basecov",
-        inferred_sex = inferred_sex_val,
-        purity = purity_val,
-        ploidy = ploidy_val,
-        verbose = verbose,
-        tau_in_gamma = tau_in_gamma,
-        mask = mask_val
-      )
-    }
-  } else {
-    stop(paste0("Invalid model_type specified: '", model_type, "'. Please choose 'unified' or 'separate'."))
-  }
-
-  return(list(
-    somatic_variants = somatic_variants,
-    germline_variants = germline_variants,
-    het_pileups = het_pileups
-  ))
 }
-
 
 #' @name transform_snv
 #' @title function to inhale SNV-laden VCF and transform counts to to estimated altered copies using linear transformation via beta, gamma conversions
