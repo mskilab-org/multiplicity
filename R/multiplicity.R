@@ -495,6 +495,117 @@ multiplicity <- function(somatic_snv = NULL,
       }
     }
 
+    names(somatic_variants) <- NULL
+    names(germline_variants) <- NULL
+    names(het_pileups) <- NULL
+
+    mcols(somatic_variants)$class <- "SOMATIC"
+    mcols(germline_variants)$class <- "GERMLINE"
+    mcols(het_pileups)$class <- "HET"
+    
+    somatic_dt <- gr2dt(somatic_variants)[, .SD[1], by = c("seqnames", "start", "end")][, c("seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
+                          intersect(c("normal.ref", "normal.alt"), names(gr2dt(somatic_variants)))), with = FALSE]
+    germline_dt <- gr2dt(germline_variants)[, .SD[1], by = c("seqnames", "start", "end")][, c("seqnames", "start", "end", "strand", "width", "class", "ref", "alt", 
+                          intersect(c("normal.ref", "normal.alt"), names(gr2dt(germline_variants)))), with = FALSE]
+    het_pileups_dt <- gr2dt(het_pileups)[, .SD[1], by = c("seqnames", "start", "end")][, .(
+      seqnames, start, end, strand, width, class,
+      ref = ref.count.t,
+      alt = alt.count.t,
+      normal.ref = if ("ref.count.n" %in% names(gr2dt(het_pileups))) ref.count.n else NA,
+      normal.alt = if ("alt.count.n" %in% names(gr2dt(het_pileups))) alt.count.n else NA
+    )]
+
+    variants <- rbind(somatic_dt, germline_dt, het_pileups_dt, fill = TRUE) %>% dt2gr()
+
+    if(!is.null(mask_val)){
+      variants <- gr.val(variants, mask_val, "blacklisted", na.rm = T) %Q%
+        (!is.na(blacklisted)) %Q%
+        (blacklisted == FALSE) # Filter out blacklisted variants
+    }
+
+    unique.variants <- variants[, c("class", "ref", "alt")] %>% gr.nochr() %Q%
+      (!seqnames %in% c("Y", "MT")) %>% unique
+
+    if(!is.null(dryclean.cov_val)){
+      unique.variants <- gr.val(unique.variants, dryclean.cov_val, "avg_basecov", na.rm = TRUE)
+      unique.variants$ref_denoised <- unique.variants$ref * unique.variants$avg_basecov / (unique.variants$ref + unique.variants$alt)
+      unique.variants$alt_denoised <- unique.variants$alt * unique.variants$avg_basecov / (unique.variants$ref + unique.variants$alt)
+
+      unique.variants$major.count <- pmax(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
+      unique.variants$minor.count <- pmin(unique.variants$ref_denoised, unique.variants$alt_denoised, na.rm = TRUE)
+      fields.to.carry <- c("ref_denoised", "alt_denoised")
+    } else {
+      unique.variants$major.count <- pmax(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
+      unique.variants$minor.count <- pmin(unique.variants$ref, unique.variants$alt, na.rm = TRUE)
+    }
+
+    m <- length(unique.variants$ref + unique.variants$alt)
+    sf <- sum(unique.variants$major.count + unique.variants$minor.count, na.rm = TRUE) / m
+    unique.variants$major.count <- unique.variants$major.count / sf
+    unique.variants$minor.count <- unique.variants$minor.count / sf
+
+    ncn.vec <- rep(2, length(unique.variants))
+
+    if (inferred_sex_val == "M") {
+      if (verbose) message("Adjusting ncn for XY")
+      ncn.vec[as.character(seqnames(unique.variants)) %in% c("X", "chrX", "23", "chr23", "Y", "chrY", "y")] <- 1
+    }
+
+    values(unique.variants)$minor_constitutional_cn <- ncn.vec - 1
+    unique.variants <- gr.val(unique.variants, cn.gr_val, "cn", na.rm = TRUE)
+
+    tau_hat <- mean(unique.variants$cn, na.rm = TRUE)
+    tau <- if (tau_in_gamma) ploidy_val else tau_hat
+    alpha <- purity_val
+    
+    beta <- alpha / (alpha * ploidy_val + 2 * (1 - alpha))
+    gamma <- 2 * (1 - alpha) / (alpha * tau + 2 * (1 - alpha))
+
+    if (verbose) message(paste0("average total CN of loci: ", tau_hat))
+    if (verbose) message(paste0("ploidy of tumor sample: ", ploidy_val))
+    if (verbose) message(paste0("purity: ", alpha, " beta: ", beta, " gamma: ", gamma))
+    if (verbose) message("applying transformation")
+
+    mcols(unique.variants)$major_gamma_coeff <- NA
+    mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "SOMATIC"] <- 2
+    mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
+    mcols(unique.variants)$major_gamma_coeff[unique.variants$class == "HET"] <- 1
+    mcols(unique.variants)$minor_gamma_coeff <- NA
+    mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "SOMATIC"] <- 0
+    mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "GERMLINE"] <- 1
+    mcols(unique.variants)$minor_gamma_coeff[unique.variants$class == "HET"] <- 1
+
+    mcols(unique.variants)$ncn.add <- ifelse(
+      mcols(unique.variants)$major_gamma_coeff > 2,
+      mcols(unique.variants)$major_gamma_coeff - 1,
+      0
+    )
+
+    mcols(unique.variants)$major_snv_copies <-
+      (2 * unique.variants$major.count -
+        (gamma * (unique.variants$minor_constitutional_cn + unique.variants$ncn.add))) / (2 * beta)
+
+    mcols(unique.variants)$minor_snv_copies <-
+      (2 * unique.variants$minor.count -
+        (gamma * unique.variants$minor_constitutional_cn * unique.variants$minor_gamma_coeff)) / (2 * beta)        
+
+    mcols(unique.variants)$total_snv_copies <-
+      unique.variants$major_snv_copies + unique.variants$minor_snv_copies
+
+    unique.variants$altered_copies <- ifelse(unique.variants$alt >= unique.variants$ref,
+      unique.variants$major_snv_copies,
+      unique.variants$minor_snv_copies
+    )
+    unique.variants$VAF <- unique.variants$alt / (unique.variants$ref + unique.variants$alt)
+
+    somatic_variants <- gr.val(somatic_variants, unique.variants %Q% (class == "SOMATIC"), c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
+    
+    germline_variants <- gr.val(germline_variants, unique.variants %Q% (class == "GERMLINE"), c(fields.to.carry, "cn",
+    "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
+
+    het_pileups <- gr.val(het_pileups, unique.variants %Q% (class == "HET"), c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies", "total_snv_copies", "altered_copies", "VAF"))
+
+
   } else if (modeltype == "separate") {
     if (verbose) message("Using separate processing model.")
 
