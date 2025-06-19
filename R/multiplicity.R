@@ -28,6 +28,8 @@ snvplicity <- function(...) {
 #' @param ploidy Ploidy of inputted jabba_rds (optional if metadata of gGraph contains ploidy)
 #' @param modeltype Model type to use for multiplicity calculations. Options are "unified" (default) or "separate". "unified" uses a single model for all SNVs, while "separate" uses different models for somatic and germline SNVs.
 #' @param snpeff_path Path to unzipped SnpEff toolkit
+#' @param output_dir Path to the directory where plots should be saved (optional).
+#' @param run_name A unique identifier for the current run, used for naming plot files (optional).
 #' @param verbose verbose output?
 #' @return Returns a GRanges with counts and converted copies
 #' @export
@@ -50,8 +52,11 @@ multiplicity <- function(
   purity = NULL,
   ploidy = NULL,
   modeltype = "unified",
+  output_dir = NULL,
+  run_name = modeltype,
   verbose = FALSE
 ) {
+  
   preprocessed_inputs <- preprocess_multiplicity_inputs(
     somatic_snv = somatic_snv,
     germline_snv = germline_snv,
@@ -108,7 +113,7 @@ multiplicity <- function(
         normal_id = normal_name,
         keepfile = FALSE,
         altpipe = TRUE,
-        verbose = verbose
+        verbose = verbosec?
       )
     }
 
@@ -145,6 +150,33 @@ multiplicity <- function(
       tau_in_gamma = tau_in_gamma,
       mask = mask
     )
+
+    # Generate and save plots if output_dir is provided
+    if (!is.null(output_dir) && !is.null(run_name)) {
+      if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE)
+      }
+
+      all_variants <- c(results$somatic_variants, results$germline_variants, results$het_pileups)
+
+      if (!is.null(all_variants)){
+        # Plot 1: Multiplicity Histogram
+        p_hist <- plot_multiplicity_histogram(all_variants)
+        ggsave(file.path(output_dir, paste0(run_name, "_multiplicity_histogram.png")), p_hist, width = 10, height = 8)
+
+        # Plot 2: VAF vs. CN Scatter Plot
+        p_scatter <- plot_vaf_cn_scatter(all_variants)
+        ggsave(file.path(output_dir, paste0(run_name, "_vaf_cn_scatter.png")), p_scatter, width = 10, height = 8)
+
+        # Plot 3: CN Density Plot
+        p_density <- plot_multiplicity_cn_density(all_variants)
+        ggsave(file.path(output_dir, paste0(run_name, "_cn_density.png")), p_density, width = 10, height = 8)
+
+        # Plot 4: CN vs. Segment CN Plot
+        p_cn_vs_segment <- plot_multiplicity_cn_vs_segment(all_variants)
+        ggsave(file.path(output_dir, paste0(run_name, "_cn_vs_segment.png")), p_cn_vs_segment, width = 10, height = 8)
+      }
+    }
 
     return(results)
     
@@ -209,6 +241,33 @@ multiplicity <- function(
         tau_in_gamma = tau_in_gamma,
         mask = mask
       )
+    }
+
+    # Generate and save plots if output_dir is provided
+    if (!is.null(output_dir) && !is.null(run_name)) {
+      if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE)
+      }
+
+      all_variants <- c(somatic_variants, germline_variants, het_pileups)
+      
+      if (!is.null(all_variants)){
+        # Plot 1: Multiplicity Histogram
+        p_hist <- plot_multiplicity_histogram(all_variants)
+        ggsave(file.path(output_dir, paste0(run_name, "_multiplicity_histogram.png")), p_hist, width = 10, height = 8)
+
+        # Plot 2: VAF vs. CN Scatter Plot
+        p_scatter <- plot_vaf_cn_scatter(all_variants)
+        ggsave(file.path(output_dir, paste0(run_name, "_vaf_cn_scatter.png")), p_scatter, width = 10, height = 8)
+
+        # Plot 3: CN Density Plot
+        p_density <- plot_multiplicity_cn_density(all_variants)
+        ggsave(file.path(output_dir, paste0(run_name, "_cn_density.png")), p_density, width = 10, height = 8)
+
+        # Plot 4: CN vs. Segment CN Plot
+        p_cn_vs_segment <- plot_multiplicity_cn_vs_segment(all_variants)
+        ggsave(file.path(output_dir, paste0(run_name, "_cn_vs_segment.png")), p_cn_vs_segment, width = 10, height = 8)
+      }
     }
 
     return(list(
