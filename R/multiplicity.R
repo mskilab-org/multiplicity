@@ -103,7 +103,7 @@ multiplicity <- function(
         vcf = germline_snv,
         snpeff_path = snpeff_path,
         coding_alt_only = FALSE,
-        filterpass = filterpass,
+        filterpass = TRUE, 
         tumor_id = tumor_name,
         normal_id = normal_name,
         keepfile = FALSE,
