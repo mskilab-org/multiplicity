@@ -56,7 +56,7 @@ multiplicity <- function(
   run_name = modeltype,
   verbose = FALSE
 ) {
-  
+
   preprocessed_inputs <- preprocess_multiplicity_inputs(
     somatic_snv = somatic_snv,
     germline_snv = germline_snv,
@@ -113,7 +113,7 @@ multiplicity <- function(
         normal_id = normal_name,
         keepfile = FALSE,
         altpipe = TRUE,
-        verbose = verbosec?
+        verbose = verbose
       )
     }
 
@@ -150,32 +150,16 @@ multiplicity <- function(
       tau_in_gamma = tau_in_gamma,
       mask = mask
     )
-
     # Generate and save plots if output_dir is provided
     if (!is.null(output_dir) && !is.null(run_name)) {
       if (!dir.exists(output_dir)) {
-        dir.create(output_dir, recursive = TRUE)
+      dir.create(output_dir, recursive = TRUE)
       }
 
-      all_variants <- c(results$somatic_variants, results$germline_variants, results$het_pileups)
-
-      if (!is.null(all_variants)){
-        # Plot 1: Multiplicity Histogram
-        p_hist <- plot_multiplicity_histogram(all_variants)
-        ggsave(file.path(output_dir, paste0(run_name, "_multiplicity_histogram.png")), p_hist, width = 10, height = 8)
-
-        # Plot 2: VAF vs. CN Scatter Plot
-        p_scatter <- plot_vaf_cn_scatter(all_variants)
-        ggsave(file.path(output_dir, paste0(run_name, "_vaf_cn_scatter.png")), p_scatter, width = 10, height = 8)
-
-        # Plot 3: CN Density Plot
-        p_density <- plot_multiplicity_cn_density(all_variants)
-        ggsave(file.path(output_dir, paste0(run_name, "_cn_density.png")), p_density, width = 10, height = 8)
-
-        # Plot 4: CN vs. Segment CN Plot
-        p_cn_vs_segment <- plot_multiplicity_cn_vs_segment(all_variants)
-        ggsave(file.path(output_dir, paste0(run_name, "_cn_vs_segment.png")), p_cn_vs_segment, width = 10, height = 8)
-      }
+      # Generate plots for each variant type using the more flexible function
+      generate_plots(results$somatic_variants, "somatic", output_dir, run_name)
+      generate_plots(results$germline_variants, "germline", output_dir, run_name)
+      generate_plots(results$het_pileups, "het", output_dir, run_name)
     }
 
     return(results)
@@ -246,28 +230,13 @@ multiplicity <- function(
     # Generate and save plots if output_dir is provided
     if (!is.null(output_dir) && !is.null(run_name)) {
       if (!dir.exists(output_dir)) {
-        dir.create(output_dir, recursive = TRUE)
+      dir.create(output_dir, recursive = TRUE)
       }
 
-      all_variants <- c(somatic_variants, germline_variants, het_pileups)
-      
-      if (!is.null(all_variants)){
-        # Plot 1: Multiplicity Histogram
-        p_hist <- plot_multiplicity_histogram(all_variants)
-        ggsave(file.path(output_dir, paste0(run_name, "_multiplicity_histogram.png")), p_hist, width = 10, height = 8)
-
-        # Plot 2: VAF vs. CN Scatter Plot
-        p_scatter <- plot_vaf_cn_scatter(all_variants)
-        ggsave(file.path(output_dir, paste0(run_name, "_vaf_cn_scatter.png")), p_scatter, width = 10, height = 8)
-
-        # Plot 3: CN Density Plot
-        p_density <- plot_multiplicity_cn_density(all_variants)
-        ggsave(file.path(output_dir, paste0(run_name, "_cn_density.png")), p_density, width = 10, height = 8)
-
-        # Plot 4: CN vs. Segment CN Plot
-        p_cn_vs_segment <- plot_multiplicity_cn_vs_segment(all_variants)
-        ggsave(file.path(output_dir, paste0(run_name, "_cn_vs_segment.png")), p_cn_vs_segment, width = 10, height = 8)
-      }
+      # Generate plots for each variant type using the more flexible function
+      generate_plots(somatic_variants, "somatic", output_dir, run_name)
+      generate_plots(germline_variants, "germline", output_dir, run_name)
+      generate_plots(het_pileups, "het", output_dir, run_name)
     }
 
     return(list(
@@ -620,8 +589,9 @@ preprocess_multiplicity_inputs <- function(
     mcols(dryclean.cov) <- NULL
     mcols(dryclean.cov)$bincov <- cov.vector
     mcols(dryclean.cov)$avg_basecov <- dryclean.cov$bincov * 2 * read_size / width(dryclean.cov)
-    is_cov_obj_present <- !is.null(dryclean.cov)
   }
+  
+  is_cov_obj_present <- !is.null(dryclean.cov)
 
   if (is.null(cn.gr)) {
     stop("cn.gr could not be derived from jabba_rds or tumor_cbs. This is required for multiplicity calculations.")

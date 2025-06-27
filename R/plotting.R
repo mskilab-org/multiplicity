@@ -1,3 +1,101 @@
+#' Generate and save plots for variant analysis
+#'
+#' This function creates and saves multiple plots for analyzing variant data,
+#' including multiplicity histograms, VAF-CN scatterplots, CN density plots,
+#' and CN vs segment plots. All plots are saved as PNG files in the specified
+#' output directory.
+#'
+#' @param variants A data frame containing variant data with columns for multiplicity,
+#'                 altered copies, altered fraction, and segment information.
+#' @param type_name A string that will be included in the output file names to
+#'                  indicate the type of variants being analyzed.
+#' @param output_dir The directory path where the plot files should be saved.
+#' @param run_name A string that will be included in the output file names to
+#'                 identify the specific analysis run.
+#'
+#' @return No return value; files are saved to the output directory.
+#'
+#' @note The function only generates plots if the variants parameter is not NULL.
+#'
+#' @seealso \code{\link{plot_multiplicity_histogram}},
+#'          \code{\link{plot_vaf_cn_scatter}},
+#'          \code{\link{plot_multiplicity_cn_density}},
+#'          \code{\link{plot_multiplicity_cn_vs_segment}}
+generate_plots <- function(variants, type_name, output_dir, run_name,
+              histograms = TRUE, 
+              scatter_plots = TRUE, 
+              density_plots = TRUE, 
+              segment_plots = TRUE,
+              plot_total_copies = TRUE,
+              plot_altered_copies = TRUE,
+              plot_altered_fraction = TRUE) {
+  if (is.null(variants)) {
+  return(NULL)
+  }
+  
+  # Create subdirectories for different plot types
+  plot_dirs <- c("histograms", "scatter_plots", "density_plots", "segment_plots")
+  for (dir in plot_dirs) {
+  dir_path <- file.path(output_dir, dir)
+  if (!dir.exists(dir_path)) {
+    dir.create(dir_path, recursive = TRUE)
+  }
+  }
+  
+  # Group 1: Multiplicity histograms
+  if (histograms && plot_total_copies) {
+  ggsave(file.path(output_dir, "histograms", paste0(run_name, "_", type_name, "_TOTALCOPIES_histogram.png")),
+       plot_multiplicity_histogram(variants),
+       width = 10, height = 8)
+  }
+  
+  if (histograms && plot_altered_copies) {
+  ggsave(file.path(output_dir, "histograms", paste0(run_name, "_", type_name, "_ALTCOPIES_histogram.png")),
+       plot_multiplicity_histogram(variants, field = "altered_copies"),
+       width = 10, height = 8)
+  }
+  
+  # Group 2: VAF-CN scatter plots
+  if (scatter_plots && plot_altered_copies) {
+  ggsave(file.path(output_dir, "scatter_plots", paste0(run_name, "_", type_name, "_ALTEREDCOPIES_scatter.png")),
+       plot_vaf_cn_scatter(variants, "altered_copies"),
+       width = 10, height = 8)
+  }
+  
+  if (scatter_plots && plot_altered_fraction) {
+  ggsave(file.path(output_dir, "scatter_plots", paste0(run_name, "_", type_name, "_ALTEREDFRACTION_scatter.png")),
+       plot_vaf_cn_scatter(variants, "altered_fraction"),
+       width = 10, height = 8)
+  }
+  
+  # Group 3: Copy number density plots
+  if (density_plots && plot_total_copies) {
+  ggsave(file.path(output_dir, "density_plots", paste0(run_name, "_", type_name, "_TOTALCOPIES_density.png")),
+       plot_multiplicity_cn_density(variants),
+       width = 10, height = 8)
+  }
+  
+  if (density_plots && plot_altered_copies) {
+  ggsave(file.path(output_dir, "density_plots", paste0(run_name, "_", type_name, "_ALTEREDCOPIES_density.png")),
+       plot_multiplicity_cn_density(variants, field = "altered_copies"),
+       width = 10, height = 8)
+  }
+  
+  # Group 4: Copy number vs segment plots
+  if (segment_plots && plot_total_copies) {
+  ggsave(file.path(output_dir, "segment_plots", paste0(run_name, "_", type_name, "_TOTALCOPIES_vs_segment.png")),
+       plot_multiplicity_cn_vs_segment(variants),
+       width = 10, height = 8)
+  }
+  
+  if (segment_plots && plot_altered_copies) {
+  ggsave(file.path(output_dir, "segment_plots", paste0(run_name, "_", type_name, "_ALTEREDCOPIES_vs_segment.png")),
+       plot_multiplicity_cn_vs_segment(variants, field = "altered_copies"),
+       width = 10, height = 8)
+  }
+}
+
+
 #' @import ggplot2
 #' @import data.table
 #' @import gUtils
