@@ -15,7 +15,6 @@ Remotes:
   github::mskilab-org/bamUtils,
   github::kevinmhadi/khtools,
   github::mskilab-org/skidb,
-  github::mskilab-org/skitools,
   github::mskilab-org/gTrack
 Imports:
   GenomicRanges,
@@ -30,7 +29,6 @@ Imports:
   rtracklayer,
   khtools,
   skidb,
-  skitools,
   data.table,
   VariantAnnotation,
   GenomeInfoDb,
