@@ -262,45 +262,69 @@ transform_unified_model <- function(
   tau_in_gamma = FALSE,
   mask = NULL
 ) {
+  # Handle NULL inputs
+  if (is.null(somatic_variants)) somatic_variants <- GRanges()
+  if (is.null(germline_variants)) germline_variants <- GRanges()
+  if (is.null(het_pileups)) het_pileups <- GRanges()
+  
   # Remove names from GRanges objects
-  names(somatic_variants) <- NULL
-  names(germline_variants) <- NULL
-  names(het_pileups) <- NULL
+  if (length(somatic_variants) > 0) names(somatic_variants) <- NULL
+  if (length(germline_variants) > 0) names(germline_variants) <- NULL
+  if (length(het_pileups) > 0) names(het_pileups) <- NULL
   
   # Label classes
-  mcols(somatic_variants)$class <- "SOMATIC"
-  mcols(germline_variants)$class <- "GERMLINE"
-  mcols(het_pileups)$class <- "HET"
+  if (length(somatic_variants) > 0) mcols(somatic_variants)$class <- "SOMATIC"
+  if (length(germline_variants) > 0) mcols(germline_variants)$class <- "GERMLINE"
+  if (length(het_pileups) > 0) mcols(het_pileups)$class <- "HET"
   
   # Convert GRanges to data.table (ensure gr2dt is available)
-  somatic_dt <- gr2dt(somatic_variants)[, .SD[1], by = c("seqnames", "start", "end")]
-  somatic_dt <- somatic_dt[, c(
-    "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
-    intersect(c("normal.ref", "normal.alt"), names(gr2dt(somatic_variants)))
-  ), with = FALSE]
+  somatic_dt <- data.table()
+  if (length(somatic_variants) > 0) {
+    somatic_dt <- gr2dt(somatic_variants)[, .SD[1], by = c("seqnames", "start", "end")]
+    somatic_dt <- somatic_dt[, c(
+      "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
+      intersect(c("normal.ref", "normal.alt"), names(gr2dt(somatic_variants)))
+    ), with = FALSE]
+  }
   
-  germline_dt <- gr2dt(germline_variants)[, .SD[1], by = c("seqnames", "start", "end")]
-  germline_dt <- germline_dt[, c(
-    "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
-    intersect(c("normal.ref", "normal.alt"), names(gr2dt(germline_variants)))
-  ), with = FALSE]
+  germline_dt <- data.table()
+  if (length(germline_variants) > 0) {
+    germline_dt <- gr2dt(germline_variants)[, .SD[1], by = c("seqnames", "start", "end")]
+    germline_dt <- germline_dt[, c(
+      "seqnames", "start", "end", "strand", "width", "class", "ref", "alt",
+      intersect(c("normal.ref", "normal.alt"), names(gr2dt(germline_variants)))
+    ), with = FALSE]
+  }
   
-  het_pileups_dt <- gr2dt(het_pileups)[, .SD[1], by = c("seqnames", "start", "end")]
-  het_pileups_dt <- het_pileups_dt[, .(
-    seqnames,
-    start,
-    end,
-    strand,
-    width,
-    class,
-    ref = ref.count.t,
-    alt = alt.count.t,
-    normal.ref = if ("ref.count.n" %in% names(gr2dt(het_pileups))) ref.count.n else NA,
-    normal.alt = if ("alt.count.n" %in% names(gr2dt(het_pileups))) alt.count.n else NA
-  )]
+  het_pileups_dt <- data.table()
+  if (length(het_pileups) > 0) {
+    het_pileups_dt <- gr2dt(het_pileups)[, .SD[1], by = c("seqnames", "start", "end")]
+    het_pileups_dt <- het_pileups_dt[, .(
+      seqnames,
+      start,
+      end,
+      strand,
+      width,
+      class,
+      ref = ref.count.t,
+      alt = alt.count.t,
+      normal.ref = if ("ref.count.n" %in% names(gr2dt(het_pileups))) ref.count.n else NA,
+      normal.alt = if ("alt.count.n" %in% names(gr2dt(het_pileups))) alt.count.n else NA
+    )]
+  }
   
   # Combine data.tables and convert back to GRanges
   variants <- rbind(somatic_dt, germline_dt, het_pileups_dt, fill = TRUE) %>% dt2gr()
+  
+  # Early return if no variants to process
+  if (length(variants) == 0) {
+    if (verbose) message("No variants to process - returning original empty GRanges objects")
+    return(list(
+      somatic_variants = somatic_variants,
+      germline_variants = germline_variants,
+      het_pileups = het_pileups
+    ))
+  }
   
   # Filter out blacklisted variants if mask provided
   if (!is.null(mask)) {
@@ -390,26 +414,32 @@ transform_unified_model <- function(
   unique.variants$VAF <- unique.variants$alt / (unique.variants$ref + unique.variants$alt)
   
   # Apply the computed values back to the original GRanges objects by subsetting based on class
-  somatic_variants <- gr.val(
-    somatic_variants,
-    unique.variants %Q% (class == "SOMATIC"),
-    c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
-      "total_snv_copies", "altered_copies", "VAF")
-  )
+  if (length(somatic_variants) > 0) {
+    somatic_variants <- gr.val(
+      somatic_variants,
+      unique.variants %Q% (class == "SOMATIC"),
+      c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
+        "total_snv_copies", "altered_copies", "VAF")
+    )
+  }
   
-  germline_variants <- gr.val(
-    germline_variants,
-    unique.variants %Q% (class == "GERMLINE"),
-    c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
-      "total_snv_copies", "altered_copies", "VAF")
-  )
+  if (length(germline_variants) > 0) {
+    germline_variants <- gr.val(
+      germline_variants,
+      unique.variants %Q% (class == "GERMLINE"),
+      c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
+        "total_snv_copies", "altered_copies", "VAF")
+    )
+  }
   
-  het_pileups <- gr.val(
-    het_pileups,
-    unique.variants %Q% (class == "HET"),
-    c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
-      "total_snv_copies", "altered_copies", "VAF")
-  )
+  if (length(het_pileups) > 0) {
+    het_pileups <- gr.val(
+      het_pileups,
+      unique.variants %Q% (class == "HET"),
+      c(fields.to.carry, "cn", "major_snv_copies", "minor_snv_copies",
+        "total_snv_copies", "altered_copies", "VAF")
+    )
+  }
   
   return(list(
     somatic_variants = somatic_variants,
@@ -1240,3 +1270,8 @@ normalize_path <- function(path) {
   ## After all this.. this will return variable "path" (could be single length character or NULL)
   return(out)
 }
+
+
+
+
+

@@ -14,6 +14,11 @@ Remotes:
   github::mskilab-org/gUtils,
   github::mskilab-org/bamUtils
 Imports:
+  GenomicRanges,
+  gTrack,
+  S4Vectors,
+  ggplot2,
+  pals,
   gGnome,
   gUtils,
   bamUtils,

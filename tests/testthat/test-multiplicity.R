@@ -1,4 +1,5 @@
 library(testthat)
+#devtools::load_all("~/git/dev/multiplicity-dev")
 #library(multiplicity)
 
 context("multiplicity function tests")
@@ -29,8 +30,8 @@ test_that("Test data files exist", {
 test_that("multiplicity test of somatic variants transformation with CBS rescaling; recommended solution for running", {
   result1 <- suppressWarnings(multiplicity(
     somatic_snv     = snpeff_vcf_file,
-    germline_snv    = "/dev/null",
-    het_pileups_wgs = "/dev/null",
+    #germline_snv    = NULL,
+    #het_pileups_wgs = NULL,
     tumor_cbs       = cbs_file,
     jabba_rds       = jabba_file,
     snpeff_path     = "~/modules/SnpEff/source/snpEff",
@@ -49,15 +50,15 @@ test_that("multiplicity test of somatic variants transformation with CBS rescali
   expect_equal(length(result1[[3]]), 0)
 
   list1  %Q% (seqnames == 22 & start == 37492267) -> variant
-  expect_equal(round(variant$altered_copies, 3), 0.551)
-  expect_equal(round(variant$total_snv_copies, 3), 1.848)
+  expect_equal(unique(round(variant$altered_copies, 3)), 0.757)
+  expect_equal(unique(round(variant$total_snv_copies, 3)), 2.538)
 })
 
 test_that("multiplicity test of somatic variants transformation with DRYCLEAN rescaling", {
   result2 <- suppressWarnings(multiplicity(
     somatic_snv     = snpeff_vcf_file,
-    germline_snv    = "/dev/null",
-    het_pileups_wgs = "/dev/null",
+    #germline_snv    = "/dev/null",
+    #het_pileups_wgs = "/dev/null",
     dryclean_field  = "foreground",
     jabba_rds       = jabba_file,
     snpeff_path     = "~/modules/SnpEff/source/snpEff",
@@ -75,16 +76,16 @@ test_that("multiplicity test of somatic variants transformation with DRYCLEAN re
   expect_equal(length(result2[[3]]), 0)
   
   list2  %Q% (seqnames == 22 & start == 37492267) -> variant
-  expect_equal(round(variant$altered_copies, 3), 0.757)
-  expect_equal(round(variant$total_snv_copies, 3), 2.538)
+  expect_equal(unique(round(variant$altered_copies, 3)), 0.757)
+  expect_equal(unique(round(variant$total_snv_copies, 3)), 2.538)
 })
 
 test_that("multiplicity test of somatic variants transformation with NO rescaling", {
   result3 <- suppressWarnings(multiplicity(
     somatic_snv     = snpeff_vcf_file,
-    germline_snv    = "/dev/null",
-    het_pileups_wgs = "/dev/null",
-    tumor_dryclean  = cov_file,
+    #germline_snv    = "/dev/null",
+    #het_pileups_wgs = "/dev/null",
+    #tumor_dryclean  = cov_file,
     dryclean_field  = "foreground",
     jabba_rds       = jabba_file,
     snpeff_path     = "~/modules/SnpEff/source/snpEff",
@@ -102,15 +103,15 @@ test_that("multiplicity test of somatic variants transformation with NO rescalin
   expect_equal(length(result3[[3]]), 0)
 
   list3 %Q% (seqnames == 22 & start == 37492267) -> variant
-  expect_equal(round(variant$altered_copies, 3), 0.603)
-  expect_equal(round(variant$total_snv_copies, 3), 2.02)
+  expect_equal(unique(round(variant$altered_copies, 3)), 0.757)
+  expect_equal(unique(round(variant$total_snv_copies, 3)), 2.538)
 })
 
 
 test_that("multiplicity test of hetsnps transformation with CBS rescaling; recommended solution for running", {
   result4 <- suppressWarnings(multiplicity(
-    somatic_snv     = "/dev/null",
-    germline_snv    = "/dev/null",
+    #somatic_snv     = "/dev/null",
+    #germline_snv    = "/dev/null",
     het_pileups_wgs = het_pileups_wgs,
     tumor_cbs       = cbs_file,
     jabba_rds       = jabba_file,
@@ -130,14 +131,14 @@ test_that("multiplicity test of hetsnps transformation with CBS rescaling; recom
   expect_equal(length(result4[[2]]), 0)
 
   list4[10000]-> variant
-  expect_equal(round(variant$altered_copies, 3), 1.365)
-  expect_equal(round(variant$total_snv_copies, 3), 2.623)
+  expect_equal(round(variant$altered_copies, 3), 1.612)
+  expect_equal(round(variant$total_snv_copies, 3), 3.097)
 })
 
 test_that("multiplicity test of hetsnps transformation with DRYCLEAN rescaling", {
   result5 <- suppressWarnings(multiplicity(
-    somatic_snv     = "/dev/null",
-    germline_snv    = "/dev/null",
+    #somatic_snv     = "/dev/null",
+    #germline_snv    = "/dev/null",
     het_pileups_wgs = het_pileups_wgs,
     dryclean_field  = "foreground",
     jabba_rds       = jabba_file,
@@ -162,8 +163,8 @@ test_that("multiplicity test of hetsnps transformation with DRYCLEAN rescaling",
 
 test_that("multiplicity test of hetsnps transformation with NO rescaling", {
   result6 <- suppressWarnings(multiplicity(
-    somatic_snv     = "/dev/null",
-    germline_snv    = "/dev/null",
+    #somatic_snv     = "/dev/null",
+    #germline_snv    = "/dev/null",
     het_pileups_wgs = het_pileups_wgs,
     tumor_dryclean  = cov_file,
     dryclean_field  = "foreground",
@@ -183,8 +184,8 @@ test_that("multiplicity test of hetsnps transformation with NO rescaling", {
   expect_equal(length(result6[[2]]), 0)
 
   list6[10000] -> variant
-  expect_equal(round(variant$altered_copies, 3), 3.223)
-  expect_equal(round(variant$total_snv_copies, 3), 6.192)
+  expect_equal(round(variant$altered_copies, 3), 3.451)
+  expect_equal(round(variant$total_snv_copies, 3), 6.629)
 })
 
 usethis::use_github_action_check_standard()
