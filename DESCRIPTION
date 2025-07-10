@@ -12,8 +12,16 @@ Remotes:
   bioc::GenomeInfoDb,
   github::mskilab-org/gGnome,
   github::mskilab-org/gUtils,
-  github::mskilab-org/bamUtils
+  github::mskilab-org/bamUtils,
+  github::kevinmhadi/khtools,
+  github::mskilab-org/skidb,
+  github::mskilab-org/gTrack
 Imports:
+  GenomicRanges,
+  gTrack,
+  S4Vectors,
+  ggplot2,
+  pals,
   gGnome,
   gUtils,
   bamUtils,
@@ -21,7 +29,6 @@ Imports:
   rtracklayer,
   khtools,
   skidb,
-  skitools,
   data.table,
   VariantAnnotation,
   GenomeInfoDb,

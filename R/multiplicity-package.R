@@ -4,6 +4,7 @@
 #' @import gUtils
 #' @import VariantAnnotation
 #' @import gGnome
+#' @import GenomicRanges
 #' @importFrom khtools grok_vcf coalesce
 #' @importFrom magrittr %>%
 #' @importMethodsFrom GenomeInfoDb seqnames seqnames<- seqlevels seqlevels<- seqlengths seqlengths<-

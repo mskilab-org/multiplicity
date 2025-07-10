@@ -22,8 +22,10 @@ multiplicity(
   tau_in_gamma = FALSE,
   purity = NULL,
   ploidy = NULL,
-  verbose = FALSE,
-  bin_width = NULL
+  modeltype = "unified",
+  output_dir = NULL,
+  run_name = modeltype,
+  verbose = FALSE
 )
 }
 \arguments{
@@ -60,6 +62,12 @@ multiplicity(
 \item{purity}{Purity of inputted jabba_rds (optional if metadata of gGraph contains purity)}
 
 \item{ploidy}{Ploidy of inputted jabba_rds (optional if metadata of gGraph contains ploidy)}
+
+\item{modeltype}{Model type to use for multiplicity calculations. Options are "unified" (default) or "separate". "unified" uses a single model for all SNVs, while "separate" uses different models for somatic and germline SNVs.}
+
+\item{output_dir}{Path to the directory where plots should be saved (optional).}
+
+\item{run_name}{A unique identifier for the current run, used for naming plot files (optional).}
 
 \item{verbose}{verbose output?}
 }
