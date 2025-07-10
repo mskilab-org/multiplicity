@@ -12,7 +12,11 @@ Remotes:
   bioc::GenomeInfoDb,
   github::mskilab-org/gGnome,
   github::mskilab-org/gUtils,
-  github::mskilab-org/bamUtils
+  github::mskilab-org/bamUtils,
+  github::kevinmhadi/khtools,
+  github::mskilab-org/skidb,
+  github::mskilab-org/skitools,
+  github::mskilab-org/gTrack
 Imports:
   GenomicRanges,
   gTrack,
