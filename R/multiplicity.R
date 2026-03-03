@@ -48,7 +48,7 @@ multiplicity <- function(somatic_snv = NULL,
                          purity = NULL,
                          ploidy = NULL,
                          verbose = FALSE,
-						 bin_width = NULL) {
+                         bin_width = NULL) {
   ### if any filepaths are /dev/null, turn them into true NULL characters.
   vars <- c("somatic_snv", "germline_snv", "het_pileups_wgs", "tumor_dryclean", "tumor_cbs")
   for (var in vars) {
@@ -174,7 +174,7 @@ multiplicity <- function(somatic_snv = NULL,
   ## the same logic as below. Would want to rename variable names for clarity.
   if (is_both_jabba_and_cov_present) {
     message("Pivoting to using JaBbA segmentation and coverage to get segment level mean coverage.")
-    cbs.cov = JaBbA:::segstats(cn.gr, dryclean.cov, field = "bincov")
+    cbs.cov = JaBbA:::segstats(cn.gr, dryclean.cov, field = "bincov", max.na = 10000.0) # ensuring that all segments get a value
     cbs.vector = cbs.cov$mean
   }
 
@@ -224,7 +224,7 @@ multiplicity <- function(somatic_snv = NULL,
       stop("No seg.mean values available in segmentation output, please provide binned coverage to recompute")
     } else if (!is_seg_mean_found && is_cov_obj_present) {
       message("seg.mean not found, pivoting to using JaBbA segmentation on cbs coverage")
-      cbs.cov = JaBbA:::segstats(cbs.cov, dryclean.cov, field = "bincov")
+      cbs.cov = JaBbA:::segstats(cbs.cov, dryclean.cov, field = "bincov", max.na = 10000.0) # ensuring that all segments get a value
       cbs.vector = cbs.cov$mean
     }
 
@@ -253,40 +253,41 @@ multiplicity <- function(somatic_snv = NULL,
   is_bin_width_numeric = !is_bin_width_empty && is.numeric(bin_width)
   is_no_bin_width_info = is_bin_width_empty && !is_cov_obj_present
   if (!is_bin_width_numeric) {
-	bin_width = as.numeric(bin_width)
+  bin_width = as.numeric(bin_width)
   }
   is_bin_width_invalid_or_na = !is_bin_width_empty && (NROW(bin_width != 1) || any(is.na(bin_width)))
   is_bin_width_default_used = is_no_bin_width_info || is_bin_width_invalid_or_na
   if (is_cov_obj_present) {
-	provided_widths = GenomicRanges::width(dryclean.cov)
-	bin_hist = graphics::hist(round(provided_widths / 100) * 100)
-	dt_hist = data.table(breaks = bin_hist$breaks[-1], counts = bin_hist$counts)
-	dt_hist_max = dt_hist[
-		counts == max(counts, na.rm = TRUE) 
-		& breaks == max(breaks, na.rm = TRUE)
-	][1,]
-	provided_bin_width = dt_hist_max$breaks
-	bin_width = provided_bin_width
-	if (!is_bin_width_empty) message("Overriding bin_width with inferred mode of provided coverage bin width: ", bin_width)
+  provided_widths = GenomicRanges::width(dryclean.cov)
+  bin_hist = graphics::hist(round(provided_widths / 100) * 100)
+  dt_hist = data.table(breaks = bin_hist$breaks[-1], counts = bin_hist$counts)
+  dt_hist_max = dt_hist[
+    counts == max(counts, na.rm = TRUE) 
+    & breaks == max(breaks, na.rm = TRUE)
+  ][1,]
+  provided_bin_width = dt_hist_max$breaks
+  bin_width = provided_bin_width
+  if (!is_bin_width_empty) message("Overriding bin_width with inferred mode of provided coverage bin width: ", bin_width)
   } else if (is_bin_width_default_used) {
-	bin_width = 1e3
-	if (is_no_bin_width_info) message("bin_width not provided and no coverage object present, assuming bin_width: ", bin_width)
-	if (is_bin_width_invalid_or_na) message("improper bin_width format provided and no coverage object present, assuming bin_width: ", bin_width)
+  bin_width = 1e3
+  if (is_no_bin_width_info) message("bin_width not provided and no coverage object present, assuming bin_width: ", bin_width)
+  if (is_bin_width_invalid_or_na) message("improper bin_width format provided and no coverage object present, assuming bin_width: ", bin_width)
   }
 
   if (is_seg_obj_present) {
     mcols(cbs.cov) <- NULL
-    mcols(cbs.cov)$bincov = cbs.vector
-    cbs.cov <- gr.tile(seqlengths(cbs.cov), bin_width) %>% gr.val(cbs.cov, "bincov")
-	ix_bincov_na = which(is.na(cbs.cov$bincov))
-	any_bincov_na = NROW(ix_bincov_na) > 0
-	if (any_bincov_na) cbs.cov[ix_bincov_na]$bincov <- 0
-    mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
+    mcols(cbs.cov)$bincov = cbs.vector ## should be seg mean value
+    # cbs.cov <- gr.tile(seqlengths(cbs.cov), bin_width) %>% gr.val(cbs.cov, "bincov")
+    # ix_bincov_na = which(is.na(cbs.cov$bincov))
+    # any_bincov_na = NROW(ix_bincov_na) > 0
+    # if (any_bincov_na) cbs.cov[ix_bincov_na]$bincov <- 0
+    # browser()
+    # mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / width(cbs.cov)
+    mcols(cbs.cov)$avg_basecov <- cbs.cov$bincov * 2 * read_size / bin_width
     if (is_cov_obj_present) {
       message("Provided segmentation superseding drycleaned binned coverage")
     }
     dryclean.cov = cbs.cov
-    
   }
   
   
